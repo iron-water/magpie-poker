@@ -12,6 +12,24 @@ const AVATAR_ALIASES = {
   unicorn: "🦄",
   cat: "🐱",
 };
+const AVATAR_KEYS = {
+  "🦊": "fox",
+  "🐼": "panda",
+  "🐯": "tiger",
+  "🐸": "frog",
+  "🦉": "owl",
+  "🐙": "octopus",
+  "🦄": "unicorn",
+  "🐱": "cat",
+  fox: "fox",
+  panda: "panda",
+  tiger: "tiger",
+  frog: "frog",
+  owl: "owl",
+  octopus: "octopus",
+  unicorn: "unicorn",
+  cat: "cat",
+};
 const DIALOG_IDS = { invite: "modal-invite", settings: "modal-settings", log: "modal-log", confirm: "modal-confirm" };
 
 let state = null;
@@ -40,6 +58,7 @@ boot();
 
 async function boot() {
   applySavedPrefs();
+  tagAvatarOptions();
   if (!DEMO) {
     document.documentElement.classList.add("use-art");
   }
@@ -303,17 +322,21 @@ function renderSeats(table, seats, myId, mySeatIndex, maxSeats) {
     node.setAttribute("role", "group");
     node.setAttribute("aria-label", labelParts.join("，"));
 
+    const avKey = avatarKey(seat.avatar);
+    const avAttr = avKey ? ` data-avatar-key="${avKey}" style="--avatar-art:url('/assets/avatar-${avKey}.webp')"` : "";
     node.innerHTML =
       `<div class="seat-tags">${badges.join("")}</div>` +
       `<div class="seat-inner">` +
-      `<div class="avatar-wrap"><div class="avatar" aria-hidden="true">${esc(avatarOf(seat.avatar))}</div>` +
+      `<div class="avatar-wrap"><div class="avatar"${avAttr} aria-hidden="true">${esc(avatarOf(seat.avatar))}</div>` +
       `<div class="timer-ring" aria-hidden="true"></div></div>` +
       `<div class="seat-info">` +
       `<div class="seat-name">${esc(seat.name || "玩家")}${isMe ? `<span class="seat-you">你</span>` : ""}</div>` +
       `<div class="seat-chips">${fmtChips(seat.chips)}</div>` +
       `<div class="seat-last">${esc(lastAction)}</div>` +
       `</div><div class="seat-cards"></div></div>` +
-      (Number(seat.bet) > 0 ? `<div class="seat-bet">${fmtChips(seat.bet)}</div>` : "");
+      (Number(seat.bet) > 0
+        ? `<div class="seat-bet" data-chip="${chipFor(seat.bet)}">${fmtChips(seat.bet)}</div>`
+        : "");
 
     const cardsHolder = $(".seat-cards", node);
     const shownCards =
@@ -2150,6 +2173,26 @@ function toast(text, level = "info") {
     node.classList.add("is-leaving");
     window.setTimeout(() => node.remove(), 220);
   }, 4200);
+}
+
+function avatarKey(value) {
+  return AVATAR_KEYS[String(value ?? "")] || "";
+}
+
+function tagAvatarOptions() {
+  for (const button of $$("[data-avatar]")) {
+    const key = avatarKey(button.dataset.avatar);
+    if (key) button.style.setProperty("--avatar-art", `url("/assets/avatar-${key}.webp")`);
+  }
+}
+
+function chipFor(amount) {
+  const n = Number(amount) || 0;
+  if (n >= 5000) return "chip-5000";
+  if (n >= 1000) return "chip-1000";
+  if (n >= 500) return "chip-500";
+  if (n >= 100) return "chip-100";
+  return "chip-25";
 }
 
 function avatarOf(value) {

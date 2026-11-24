@@ -1,29 +1,29 @@
 /* 铁水牌局 — dark felt, brass trim, no external assets required. */
 
 :root {
-  --bg: #070b09;
-  --bg-2: #0a100d;
-  --panel: #101813;
-  --panel-2: #0c130f;
-  --panel-3: #151f19;
-  --line: rgba(210, 190, 150, 0.14);
-  --line-strong: rgba(210, 190, 150, 0.3);
-  --text: #f1ebde;
-  --muted: #9baaa0;
-  --faint: #7c8b81;
-  --gold: #c8a66b;
-  --gold-2: #e4cb97;
-  --gold-soft: rgba(200, 166, 107, 0.14);
-  --red: #b4463d;
-  --red-2: #dd7a6e;
-  --green: #79bd91;
-  --blue: #7dabc2;
-  --felt-deep: #061c16;
-  --felt: #0d3d2f;
-  --felt-light: #14604a;
-  --card-face: #f6efdd;
-  --card-ink: #1c1e1b;
-  --card-red: #b03832;
+  --bg: #0a0705;
+  --bg-2: #100b08;
+  --panel: #17100c;
+  --panel-2: #120c09;
+  --panel-3: #1e1510;
+  --line: rgba(201, 163, 92, 0.15);
+  --line-strong: rgba(201, 163, 92, 0.32);
+  --text: #f0e6d2;
+  --muted: #b3a48c;
+  --faint: #8d7f6a;
+  --gold: #c9a35c;
+  --gold-2: #e8cf9a;
+  --gold-soft: rgba(201, 163, 92, 0.14);
+  --red: #a83a32;
+  --red-2: #d9776a;
+  --green: #7fb08a;
+  --blue: #8aa8b8;
+  --felt-deep: #06140f;
+  --felt: #0b3a2b;
+  --felt-light: #14523f;
+  --card-face: #efe4c9;
+  --card-ink: #221c14;
+  --card-red: #9e2f2a;
   --radius: 16px;
   --radius-sm: 10px;
   --shadow: 0 22px 60px rgba(0, 0, 0, 0.46);
@@ -51,8 +51,8 @@ body {
   margin: 0;
   min-height: 100dvh;
   background:
-    radial-gradient(ellipse at 12% -10%, rgba(29, 80, 61, 0.28), transparent 55%),
-    radial-gradient(ellipse at 92% 8%, rgba(96, 72, 34, 0.16), transparent 48%),
+    radial-gradient(ellipse at 12% -10%, rgba(92, 38, 28, 0.3), transparent 55%),
+    radial-gradient(ellipse at 92% 8%, rgba(128, 92, 38, 0.18), transparent 48%),
     var(--bg);
   color: var(--text);
   font-family: var(--font-ui);
@@ -965,7 +965,7 @@ ul {
   place-items: center;
   border-radius: 50%;
   border: 1px solid rgba(210, 190, 150, 0.2);
-  background: radial-gradient(circle at 38% 28%, #33463b, #141d17 72%);
+  background: radial-gradient(circle at 38% 28%, #4a3528, #1b120d 72%);
   font-size: 19px;
   line-height: 1;
 }
@@ -1557,12 +1557,12 @@ ul {
 }
 
 .card--back {
-  border-color: rgba(228, 203, 151, 0.24);
-  background-color: #0b1f19;
+  border-color: rgba(201, 163, 92, 0.26);
+  background-color: #1b0e0b;
   background-image:
-    var(--card-back-art, repeating-linear-gradient(45deg, rgba(228, 203, 151, 0.07) 0 2px, transparent 2px 6px)),
-    radial-gradient(circle at 50% 50%, rgba(228, 203, 151, 0.14), transparent 58%),
-    linear-gradient(150deg, #173a2e, #081712 72%);
+    var(--card-back-art, repeating-linear-gradient(45deg, rgba(201, 163, 92, 0.08) 0 2px, transparent 2px 6px)),
+    radial-gradient(circle at 50% 50%, rgba(201, 163, 92, 0.16), transparent 58%),
+    linear-gradient(150deg, #4a1c18, #140a08 72%);
   background-size: cover, auto, auto;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
@@ -2565,6 +2565,176 @@ html.use-art .chip-blue {
 
 html.use-art .chip-dark {
   --chip-art: url("/assets/chip-dark.webp");
+}
+
+
+/* ============================== P1 art hooks ============================== */
+
+.settle-titleblock {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 0;
+}
+
+.settle-crest {
+  width: 64px;
+  height: 64px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: rgba(217, 180, 91, 0.55);
+  font-size: 28px;
+  position: relative;
+}
+
+html.use-art .settle-crest::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: url("/assets/trophy.webp") center / contain no-repeat;
+}
+
+html.use-art .lounge-view {
+  background-image:
+    linear-gradient(90deg, rgba(5, 12, 10, 0.94) 0%, rgba(5, 12, 10, 0.74) 48%, rgba(5, 12, 10, 0.92) 100%),
+    url("/assets/bg-lobby.webp");
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+html.use-art .table-view {
+  background-image:
+    radial-gradient(ellipse at 50% 42%, rgba(8, 18, 14, 0.08), rgba(3, 7, 6, 0.72) 78%),
+    url("/assets/bg-room.webp");
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+html.use-art .settlement-view {
+  background-image:
+    linear-gradient(180deg, rgba(4, 10, 8, 0.9), rgba(5, 12, 10, 0.96)),
+    url("/assets/bg-settlement.webp");
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+/* Avatars are an overlay, not a replacement: if the file is missing the
+   emoji underneath is still visible. */
+html.use-art .avatar,
+html.use-art .avatar-option {
+  position: relative;
+  overflow: hidden;
+}
+
+html.use-art .avatar::after,
+html.use-art .avatar-option::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--avatar-art, none) center / cover no-repeat;
+  pointer-events: none;
+}
+
+html.use-art .badge-dealer {
+  background-image: url("/assets/dealer-button.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+html.use-art .badge-sb {
+  background-image: url("/assets/marker-sb.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+html.use-art .badge-bb {
+  background-image: url("/assets/marker-bb.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+html.use-art .badge-allin {
+  background-image: url("/assets/stamp-allin.webp");
+  background-size: cover;
+  background-position: center;
+}
+
+html.use-art .seat.is-empty .seat-inner {
+  background-image: url("/assets/empty-seat.webp");
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+}
+
+html.use-art .seat-bet::before {
+  width: 10px;
+  height: 10px;
+  background-color: var(--gold);
+  background-size: cover;
+  background-position: center;
+}
+
+html.use-art .seat-bet[data-chip="chip-25"]::before {
+  background-image: url("/assets/chip-25.webp");
+}
+html.use-art .seat-bet[data-chip="chip-100"]::before {
+  background-image: url("/assets/chip-100.webp");
+}
+html.use-art .seat-bet[data-chip="chip-500"]::before {
+  background-image: url("/assets/chip-500.webp");
+}
+html.use-art .seat-bet[data-chip="chip-1000"]::before {
+  background-image: url("/assets/chip-1000.webp");
+}
+html.use-art .seat-bet[data-chip="chip-5000"]::before {
+  background-image: url("/assets/chip-5000.webp");
+}
+
+html.use-art .key-box {
+  background-image:
+    linear-gradient(180deg, rgba(4, 8, 6, 0.72), rgba(4, 8, 6, 0.86)),
+    url("/assets/key-card.webp");
+  background-size: cover, cover;
+  background-position: center, center;
+}
+
+html.use-art .transfer-card[data-status="verified"]::after {
+  content: "";
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  width: 92px;
+  height: 92px;
+  background: url("/assets/stamp-paid.webp") center / contain no-repeat;
+  opacity: 0.6;
+  transform: rotate(-12deg);
+  pointer-events: none;
+}
+
+/* Icons only when there is room; the 960px bar stays text-only. */
+@media (min-width: 1100px) {
+  html.use-art .btn-fold::before,
+  html.use-art .btn-check::before,
+  html.use-art .btn-call::before,
+  html.use-art .btn-raise::before,
+  html.use-art .quick-allin::before {
+    content: "";
+    display: inline-block;
+    width: 13px;
+    height: 13px;
+    margin-right: 6px;
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    vertical-align: -2px;
+  }
+  html.use-art .btn-fold::before { background-image: url("/assets/icon-fold.webp"); }
+  html.use-art .btn-check::before { background-image: url("/assets/icon-check.webp"); }
+  html.use-art .btn-call::before { background-image: url("/assets/icon-call.webp"); }
+  html.use-art .btn-raise::before { background-image: url("/assets/icon-raise.webp"); }
+  html.use-art .quick-allin::before { background-image: url("/assets/icon-allin.webp"); }
 }
 
 @media (prefers-reduced-motion: reduce) {
