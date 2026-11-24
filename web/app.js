@@ -797,6 +797,7 @@ function statusLabel(status, isPayer, isPayee) {
   if (status === "pending") return isPayee ? "待对方签发" : "待签发";
   if (status === "issued") return isPayee ? "待验证" : "已签发";
   if (status === "failed") return "失败";
+  if (status === "small") return "低于最小额";
   if (status === "verified") return "已验证";
   return String(status || "未知");
 }

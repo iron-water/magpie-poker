@@ -100,6 +100,7 @@ x-poker-sig: HMAC-SHA256(session, [METHOD, path, ts, sha256hex(body)].join("\n")
 
 - SSE 断开 8 秒后房主标记该玩家 `connected=false`、`sittingOut=true`；如果正轮到他，
   立即弃牌（`markDisconnected`）。
-- 同一名字的断线玩家在下一手开始前重新入桌会复用原座位和筹码（`addPlayer` 的 name reclaim）。
+- 断线玩家重新入桌时，如果用的是**入桌时被分配的名字**（重名会被加 ` 2` 后缀），
+  会在下一手开始前复用原座位和筹码；用原名重连会当新玩家。
 - 房主重启：`host.json` 保存牌桌 id、座位、X25519 身份和 `secret`，牌桌 JSON 每 250ms
   防抖落盘；重启后自动恢复并重新监听。旧邀请码继续有效。
