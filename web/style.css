@@ -1483,14 +1483,6 @@ ul {
   --suit-color: var(--card-red);
 }
 
-.card--four.suit-d {
-  --suit-color: #2f6f9f;
-}
-
-.card--four.suit-c {
-  --suit-color: #2f7d4f;
-}
-
 .card-corner {
   position: absolute;
   top: 5%;
@@ -2539,32 +2531,24 @@ ul {
 
 /* Optional art: the live UI opts in; ?demo=1 stays pure CSS so a preview
    without images never makes failed requests. All fallback layers stay. */
-html.use-art .felt {
-  --felt-art: url("/assets/table-felt.webp");
-}
-
 html.use-art .brand-mark {
   --logo-art: url("/assets/logo.svg");
 }
 
-html.use-art .card--back {
-  --card-back-art: url("/assets/card-back.webp");
-}
-
 html.use-art .chip-red {
-  --chip-art: url("/assets/chip-red.webp");
+  --chip-art: var(--chip-500);
 }
 
 html.use-art .chip-gold {
-  --chip-art: url("/assets/chip-gold.webp");
+  --chip-art: var(--chip-5000);
 }
 
 html.use-art .chip-blue {
-  --chip-art: url("/assets/chip-blue.webp");
+  --chip-art: var(--chip-1000);
 }
 
 html.use-art .chip-dark {
-  --chip-art: url("/assets/chip-dark.webp");
+  --chip-art: var(--chip-100);
 }
 
 
@@ -2592,13 +2576,13 @@ html.use-art .settle-crest::after {
   content: "";
   position: absolute;
   inset: 0;
-  background: url("/assets/trophy.webp") center / contain no-repeat;
+  background: var(--trophy) center / contain no-repeat;
 }
 
 html.use-art .lounge-view {
   background-image:
     linear-gradient(90deg, rgba(5, 12, 10, 0.94) 0%, rgba(5, 12, 10, 0.74) 48%, rgba(5, 12, 10, 0.92) 100%),
-    url("/assets/bg-lobby.webp");
+    var(--bg-lobby);
   background-size: cover, cover;
   background-position: center, center;
 }
@@ -2606,7 +2590,7 @@ html.use-art .lounge-view {
 html.use-art .table-view {
   background-image:
     radial-gradient(ellipse at 50% 42%, rgba(8, 18, 14, 0.08), rgba(3, 7, 6, 0.72) 78%),
-    url("/assets/bg-room.webp");
+    var(--bg-room);
   background-size: cover, cover;
   background-position: center, center;
 }
@@ -2614,7 +2598,7 @@ html.use-art .table-view {
 html.use-art .settlement-view {
   background-image:
     linear-gradient(180deg, rgba(4, 10, 8, 0.9), rgba(5, 12, 10, 0.96)),
-    url("/assets/bg-settlement.webp");
+    var(--bg-settlement);
   background-size: cover, cover;
   background-position: center, center;
 }
@@ -2638,31 +2622,31 @@ html.use-art .avatar-option::after {
 }
 
 html.use-art .badge-dealer {
-  background-image: url("/assets/dealer-button.webp");
+  background-image: var(--dealer-button);
   background-size: cover;
   background-position: center;
 }
 
 html.use-art .badge-sb {
-  background-image: url("/assets/marker-sb.webp");
+  background-image: var(--marker-sb);
   background-size: cover;
   background-position: center;
 }
 
 html.use-art .badge-bb {
-  background-image: url("/assets/marker-bb.webp");
+  background-image: var(--marker-bb);
   background-size: cover;
   background-position: center;
 }
 
 html.use-art .badge-allin {
-  background-image: url("/assets/stamp-allin.webp");
+  background-image: var(--stamp-allin);
   background-size: cover;
   background-position: center;
 }
 
 html.use-art .seat.is-empty .seat-inner {
-  background-image: url("/assets/empty-seat.webp");
+  background-image: var(--empty-seat);
   background-size: contain;
   background-repeat: no-repeat;
   background-position: center;
@@ -2677,25 +2661,25 @@ html.use-art .seat-bet::before {
 }
 
 html.use-art .seat-bet[data-chip="chip-25"]::before {
-  background-image: url("/assets/chip-25.webp");
+  background-image: var(--chip-25);
 }
 html.use-art .seat-bet[data-chip="chip-100"]::before {
-  background-image: url("/assets/chip-100.webp");
+  background-image: var(--chip-100);
 }
 html.use-art .seat-bet[data-chip="chip-500"]::before {
-  background-image: url("/assets/chip-500.webp");
+  background-image: var(--chip-500);
 }
 html.use-art .seat-bet[data-chip="chip-1000"]::before {
-  background-image: url("/assets/chip-1000.webp");
+  background-image: var(--chip-1000);
 }
 html.use-art .seat-bet[data-chip="chip-5000"]::before {
-  background-image: url("/assets/chip-5000.webp");
+  background-image: var(--chip-5000);
 }
 
 html.use-art .key-box {
   background-image:
     linear-gradient(180deg, rgba(4, 8, 6, 0.72), rgba(4, 8, 6, 0.86)),
-    url("/assets/key-card.webp");
+    var(--key-card);
   background-size: cover, cover;
   background-position: center, center;
 }
@@ -2707,7 +2691,7 @@ html.use-art .transfer-card[data-status="verified"]::after {
   bottom: 8px;
   width: 92px;
   height: 92px;
-  background: url("/assets/stamp-paid.webp") center / contain no-repeat;
+  background: var(--stamp-paid) center / contain no-repeat;
   opacity: 0.6;
   transform: rotate(-12deg);
   pointer-events: none;
@@ -2730,11 +2714,102 @@ html.use-art .transfer-card[data-status="verified"]::after {
     background-position: center;
     vertical-align: -2px;
   }
-  html.use-art .btn-fold::before { background-image: url("/assets/icon-fold.webp"); }
-  html.use-art .btn-check::before { background-image: url("/assets/icon-check.webp"); }
-  html.use-art .btn-call::before { background-image: url("/assets/icon-call.webp"); }
-  html.use-art .btn-raise::before { background-image: url("/assets/icon-raise.webp"); }
-  html.use-art .quick-allin::before { background-image: url("/assets/icon-allin.webp"); }
+  html.use-art .btn-fold::before { background-image: var(--icon-fold); }
+  html.use-art .btn-check::before { background-image: var(--icon-check); }
+  html.use-art .btn-call::before { background-image: var(--icon-call); }
+  html.use-art .btn-raise::before { background-image: var(--icon-raise); }
+  html.use-art .quick-allin::before { background-image: var(--icon-allin); }
+}
+
+
+/* ============================== skins ============================== */
+
+html[data-skin="gilded"] {
+  --bg: #0d0906;
+  --bg-2: #140d08;
+  --panel: #1c130d;
+  --panel-2: #160f0a;
+  --panel-3: #241a12;
+  --line: rgba(216, 185, 120, 0.16);
+  --line-strong: rgba(216, 185, 120, 0.34);
+  --text: #f6ecd9;
+  --muted: #c4b294;
+  --faint: #97856c;
+  --gold: #d8b978;
+  --gold-2: #f0d9a8;
+  --gold-soft: rgba(216, 185, 120, 0.14);
+}
+
+html[data-skin="gilded"] body {
+  background:
+    radial-gradient(ellipse at 12% -10%, rgba(92, 38, 28, 0.32), transparent 55%),
+    radial-gradient(ellipse at 92% 8%, rgba(128, 92, 38, 0.2), transparent 48%),
+    var(--bg);
+}
+
+.skin-choice {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.skin-option {
+  flex: 1 1 160px;
+  padding: 10px 12px;
+  text-align: left;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.skin-option strong {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.skin-option small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.skin-option:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.skin-option.is-selected {
+  border-color: var(--gold);
+  box-shadow: inset 0 0 0 1px var(--gold-soft);
+}
+
+.card--imgcard {
+  padding: 0;
+  background: transparent;
+  border-color: transparent;
+  overflow: hidden;
+}
+
+.card--imgcard .card-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.card--imgcard.card--back {
+  background: var(--card-face);
+}
+
+html.use-art .card--back {
+  background-image: var(--card-back-art, none);
+  background-size: cover;
+  background-position: center;
 }
 
 @media (prefers-reduced-motion: reduce) {

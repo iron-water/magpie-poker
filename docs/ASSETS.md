@@ -1,3 +1,6 @@
+> 实际两套皮肤已落地：`assets/skins/gilded`（ChatGPT · 鎏金象牙）与
+> `assets/skins/saintdenis`（Gemini · 圣丹尼）。本文件保留生成时的提示词与风格基准。
+
 # 素材清单与确切提示词（RDR2 南部城市牌局风）
 
 参考基准：**Red Dead Redemption 2 圣丹尼（Saint Denis）的 La Bastille Saloon**——绿呢牌桌、

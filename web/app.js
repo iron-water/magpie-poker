@@ -1,4 +1,5 @@
-import { cardEl, cardBack, emptyCard, setFourColor, getFourColor } from "./cards.js";
+import { cardEl, cardBack, emptyCard } from "./cards.js";
+import { applySkin, getSkin, skinAsset, SKINS } from "./skins.js";
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get("demo") === "1";
@@ -7,6 +8,7 @@ const AVATAR_ALIASES = {
   panda: "🐼",
   tiger: "🐯",
   frog: "🐸",
+  wolf: "🐺",
   owl: "🦉",
   octopus: "🐙",
   unicorn: "🦄",
@@ -17,6 +19,7 @@ const AVATAR_KEYS = {
   "🐼": "panda",
   "🐯": "tiger",
   "🐸": "frog",
+  "🐺": "wolf",
   "🦉": "owl",
   "🐙": "octopus",
   "🦄": "unicorn",
@@ -25,6 +28,7 @@ const AVATAR_KEYS = {
   panda: "panda",
   tiger: "tiger",
   frog: "frog",
+  wolf: "wolf",
   owl: "owl",
   octopus: "octopus",
   unicorn: "unicorn",
@@ -57,11 +61,17 @@ const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selec
 boot();
 
 async function boot() {
-  applySavedPrefs();
-  tagAvatarOptions();
-  if (!DEMO) {
-    document.documentElement.classList.add("use-art");
+  const requested = params.get("skin");
+  let saved = "gilded";
+  try {
+    saved = localStorage.getItem("poker-skin") || "gilded";
+  } catch {
+    /* private mode */
   }
+  applySkin(requested === "saintdenis" || requested === "gilded" ? requested : saved);
+  document.documentElement.classList.add("use-art");
+  tagAvatarOptions();
+  updateSkinButtons();
   bindTopbar();
   bindLounge();
   bindActionBar();
@@ -323,7 +333,8 @@ function renderSeats(table, seats, myId, mySeatIndex, maxSeats) {
     node.setAttribute("aria-label", labelParts.join("，"));
 
     const avKey = avatarKey(seat.avatar);
-    const avAttr = avKey ? ` data-avatar-key="${avKey}" style="--avatar-art:url('/assets/avatar-${avKey}.webp')"` : "";
+    const avUrl = avKey ? skinAsset(avKey) : "";
+    const avAttr = avUrl ? ` data-avatar-key="${avKey}" style="--avatar-art:url('${avUrl}')"` : "";
     node.innerHTML =
       `<div class="seat-tags">${badges.join("")}</div>` +
       `<div class="seat-inner">` +
@@ -1209,16 +1220,6 @@ function bindDialogs() {
     event.preventDefault();
     saveProfile("#settings-name", "#settings-gateway");
   });
-  $("#four-color").addEventListener("change", (event) => {
-    const enabled = event.currentTarget.checked;
-    setFourColor(enabled);
-    try {
-      localStorage.setItem("poker.fourColor", enabled ? "1" : "0");
-    } catch {
-      /* private mode */
-    }
-    render();
-  });
   $("#health-check").addEventListener("click", checkHealth);
   $("#btn-tailscale-serve").addEventListener("click", () => serveTailscale("table"));
   $("#btn-tailscale-gateway").addEventListener("click", () => serveTailscale("gateway"));
@@ -1236,6 +1237,13 @@ function bindDialogs() {
 }
 
 function bindTopbar() {
+  $("#btn-skin").addEventListener("click", () => {
+    setActiveSkin(getSkin() === "gilded" ? "saintdenis" : "gilded");
+  });
+  document.addEventListener("click", (event) => {
+    const option = event.target.closest?.("[data-skin-choice]");
+    if (option) setActiveSkin(option.dataset.skinChoice);
+  });
   for (const id of ["modal-invite", "modal-settings", "modal-log"]) {
     const dialog = document.getElementById(id);
     if (!dialog) continue;
@@ -1322,7 +1330,6 @@ function openSettings() {
   const profile = state?.profile || {};
   $("#settings-name").value = profile.name || "";
   $("#settings-gateway").value = profile.gatewayUrl || "";
-  $("#four-color").checked = getFourColor();
   applyAvatarSelection();
   renderSettingsData();
   const dialog = $("#modal-settings");
@@ -2088,13 +2095,6 @@ function setConnection(kind, text) {
   }
 }
 
-function applySavedPrefs() {
-  try {
-    if (localStorage.getItem("poker.fourColor") === "1") setFourColor(true);
-  } catch {
-    /* private mode */
-  }
-}
 
 function applyAvatarSelection() {
   for (const button of $$("[data-avatar]")) {
@@ -2182,7 +2182,31 @@ function avatarKey(value) {
 function tagAvatarOptions() {
   for (const button of $$("[data-avatar]")) {
     const key = avatarKey(button.dataset.avatar);
-    if (key) button.style.setProperty("--avatar-art", `url("/assets/avatar-${key}.webp")`);
+    const url = key ? skinAsset(key) : "";
+    if (url) button.style.setProperty("--avatar-art", `url("${url}")`);
+    else button.style.removeProperty("--avatar-art");
+  }
+}
+
+function setActiveSkin(name) {
+  if (!SKINS[name]) return;
+  applySkin(name);
+  try {
+    localStorage.setItem("poker-skin", name);
+  } catch {
+    /* private mode */
+  }
+  tagAvatarOptions();
+  updateSkinButtons();
+  render();
+}
+
+function updateSkinButtons() {
+  const current = getSkin();
+  const button = $("#btn-skin");
+  if (button) button.textContent = SKINS[current].short;
+  for (const option of $$("[data-skin-choice]")) {
+    option.classList.toggle("is-selected", option.dataset.skinChoice === current);
   }
 }
 

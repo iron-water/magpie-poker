@@ -9,7 +9,7 @@
 - 每个玩家本地起服务，页面只和本机说话；牌桌流量走 Tailscale
 - 结算不碰真钱：输家本机执行 `magpie gateway-key issue`，key 自带额度与 TTL
 
-![牌桌](docs/screenshot-table.png)
+![鎏金象牙](docs/skin-gilded.jpg)
 
 ## 快速开始
 
@@ -52,7 +52,17 @@ magpie plugin add github:iron-water/magpie-poker
 
 key 是 bearer：只发给对应的赢家，建议用默认的 7 天 TTL（CLI 写 `168h`，magpie 的 TTL 不支持 `7d`）；到期自动失效。
 
-![结算](docs/screenshot-settlement.png)
+## 两套皮肤
+
+| 皮肤 | 来源 | 牌面 | 切换 |
+|---|---|---|---|
+| **鎏金象牙** | ChatGPT | 经典点阵，宫廷牌 + 雕版花色 | 顶部「鎏金」 |
+| **圣丹尼** | Gemini | 大牌面，2–A 牌面 + 蜡封花色 | 顶部「圣丹尼」 |
+
+也可以在设置里选，或直接开 `?skin=gilded` / `?skin=saintdenis`。两副牌的 52 张预览：
+[鎏金象牙](docs/deck-gilded.jpg) · [圣丹尼](docs/deck-saintdenis.jpg)。
+
+![圣丹尼](docs/skin-saintdenis.jpg)
 
 ## 安全与边界
 
@@ -91,11 +101,12 @@ docs/ASSETS.md          GPT Image 素材清单
 
 ## 已验证
 
-- `node --test`：牌力评估（含 1 万手随机对拍）、边池、下注轮、单挑顺序、超时、
+- `node --test`：49 个测试，牌力评估（含 1 万手随机对拍）、边池、下注轮、单挑顺序、超时、
   结算守恒、X25519 握手、签名/重放、SSE 解析、双进程端到端（建房 → 入桌 → 发牌 →
-  行动 → 聊天 → 摊牌 → 结算）。
+  行动 → 聊天 → 摊牌 → 结算），以及两套皮肤各 52 张牌面/牌背的完整性。
 - 真机：magpie 0.1.4759 的页面插件宿主、`gateway-key issue` 签发与 `/v1/models` 验证
   （经 Tailscale IP 访问）。
+- UI：两套皮肤在 1280×800 下实际渲染，牌面 100% 加载、零控制台错误；顶部/设置都能切换。
 
 ## License
 

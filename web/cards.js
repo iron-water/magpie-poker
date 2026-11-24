@@ -1,11 +1,11 @@
-// Playing-card DOM factory. No images: CSS + Unicode suit glyphs.
+// Playing-card DOM factory. Each skin ships 52 pre-rendered faces plus a back;
+// the DOM keeps the size/rounding/shadow, the image carries the art.
 // Card strings follow docs/API.md: rank in 23456789TJQKA + suit in shdc.
 
 const SUIT_GLYPH = { s: "♠", h: "♥", d: "♦", c: "♣" };
 const SUIT_NAME = { s: "黑桃", h: "红桃", d: "方块", c: "梅花" };
 const RANKS = "23456789TJQKA";
 const SUITS = "shdc";
-let fourColorDefault = false;
 
 function parse(card) {
   if (typeof card === "number" && Number.isInteger(card) && card >= 0 && card < 52) {
@@ -20,59 +20,22 @@ function parse(card) {
   return null;
 }
 
-export function isCard(card) {
-  return parse(card) !== null;
+function currentSkin() {
+  return document.documentElement.dataset.skin === "saintdenis" ? "saintdenis" : "gilded";
 }
 
-export function cardLabel(card) {
-  const parsed = parse(card);
-  if (!parsed) return "未知牌";
-  return `${SUIT_NAME[parsed.suit]} ${parsed.rank}`;
+function faceUrl(card) {
+  const p = parse(card);
+  return `/assets/skins/${currentSkin()}/cards/${p.rank}${p.suit}.webp`;
 }
 
-export function setFourColor(on) {
-  fourColorDefault = Boolean(on);
-  document.documentElement.dataset.fourColor = on ? "1" : "0";
+function backUrl() {
+  return `/assets/skins/${currentSkin()}/card-back.webp`;
 }
 
-export function getFourColor() {
-  return fourColorDefault;
-}
-
-export function emptyCard(options = {}) {
-  const el = document.createElement("div");
-  el.className = `card card--empty card--${options.size || "md"}`;
-  el.setAttribute("aria-hidden", "true");
-  return el;
-}
-
-export function cardBack(options = {}) {
-  const el = document.createElement("div");
-  el.className = `card card--back card--${options.size || "sm"}`;
-  el.setAttribute("role", "img");
-  el.setAttribute("aria-label", "暗牌");
-  const mark = document.createElement("span");
-  mark.className = "card-back-mark";
-  mark.setAttribute("aria-hidden", "true");
-  el.append(mark);
-  return el;
-}
-
-// options: { size: "sm"|"md"|"lg", fourColor, back, faceDown, className }
-export function cardEl(card, options = {}) {
-  if (options.back || options.faceDown) return cardBack(options);
-  const parsed = parse(card);
-  if (!parsed) return emptyCard(options);
-  const four = options.fourColor ?? fourColorDefault;
-  const size = options.size || "md";
-  const el = document.createElement("div");
-  el.className =
-    `card card--${size} suit-${parsed.suit}` +
-    (four ? " card--four" : "") +
-    (options.className ? ` ${options.className}` : "");
-  el.setAttribute("role", "img");
-  el.setAttribute("aria-label", cardLabel(card));
-
+function fallbackFace(el, parsed) {
+  el.classList.add("card--fallback");
+  el.textContent = "";
   const corner = document.createElement("span");
   corner.className = "card-corner";
   const rank = document.createElement("span");
@@ -91,8 +54,69 @@ export function cardEl(card, options = {}) {
   const far = corner.cloneNode(true);
   far.classList.add("card-corner--far");
   far.setAttribute("aria-hidden", "true");
-
   el.append(corner, pip, far);
+}
+
+export function isCard(card) {
+  return parse(card) !== null;
+}
+
+export function cardLabel(card) {
+  const parsed = parse(card);
+  if (!parsed) return "未知牌";
+  return `${SUIT_NAME[parsed.suit]} ${parsed.rank === "T" ? "10" : parsed.rank}`;
+}
+
+export function emptyCard(options = {}) {
+  const el = document.createElement("div");
+  el.className = `card card--empty card--${options.size || "md"}`;
+  el.setAttribute("aria-hidden", "true");
+  return el;
+}
+
+export function cardBack(options = {}) {
+  const el = document.createElement("div");
+  el.className = `card card--back card--imgcard card--${options.size || "sm"} card--skin-${currentSkin()}`;
+  el.setAttribute("role", "img");
+  el.setAttribute("aria-label", "暗牌");
+  const img = document.createElement("img");
+  img.className = "card-img";
+  img.src = backUrl();
+  img.alt = "";
+  img.draggable = false;
+  img.addEventListener("error", () => {
+    img.remove();
+    const mark = document.createElement("span");
+    mark.className = "card-back-mark";
+    mark.setAttribute("aria-hidden", "true");
+    el.append(mark);
+  });
+  el.append(img);
+  return el;
+}
+
+// options: { size: "sm"|"md"|"lg", back, faceDown, className }
+export function cardEl(card, options = {}) {
+  if (options.back || options.faceDown) return cardBack(options);
+  const parsed = parse(card);
+  if (!parsed) return emptyCard(options);
+  const size = options.size || "md";
+  const el = document.createElement("div");
+  el.className =
+    `card card--${size} card--face card--imgcard card--skin-${currentSkin()}` +
+    (options.className ? ` ${options.className}` : "");
+  el.dataset.card = `${parsed.rank}${parsed.suit}`;
+  el.dataset.suit = parsed.suit;
+  el.setAttribute("role", "img");
+  el.setAttribute("aria-label", cardLabel(card));
+
+  const img = document.createElement("img");
+  img.className = "card-img";
+  img.src = faceUrl(card);
+  img.alt = "";
+  img.draggable = false;
+  img.addEventListener("error", () => fallbackFace(el, parsed));
+  el.append(img);
   return el;
 }
 

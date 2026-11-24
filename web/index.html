@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-four-color="0">
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -29,6 +29,7 @@
         <button class="btn btn-ghost btn-sm" type="button" id="btn-settlement" hidden>结算</button>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-invite" hidden>邀请</button>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-log" hidden>日志</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-skin" title="切换牌面皮肤">鎏金</button>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">设置</button>
         <button class="btn btn-ghost btn-sm" type="button" id="btn-end" data-pending-key="end" hidden>结束</button>
         <button class="btn btn-danger-ghost btn-sm" type="button" id="btn-leave" data-pending-key="leave" hidden>离桌</button>
@@ -160,7 +161,7 @@
                     <button class="avatar-option" type="button" data-avatar="🦊" aria-label="狐狸">🦊</button>
                     <button class="avatar-option" type="button" data-avatar="🐼" aria-label="熊猫">🐼</button>
                     <button class="avatar-option" type="button" data-avatar="🐯" aria-label="老虎">🐯</button>
-                    <button class="avatar-option" type="button" data-avatar="🐸" aria-label="青蛙">🐸</button>
+                    <button class="avatar-option" type="button" data-avatar="🐺" aria-label="狼">🐺</button>
                     <button class="avatar-option" type="button" data-avatar="🦉" aria-label="猫头鹰">🦉</button>
                     <button class="avatar-option" type="button" data-avatar="🐙" aria-label="章鱼">🐙</button>
                     <button class="avatar-option" type="button" data-avatar="🦄" aria-label="独角兽">🦄</button>
@@ -299,18 +300,25 @@
               <button class="avatar-option" type="button" data-avatar="🦊" aria-label="狐狸">🦊</button>
               <button class="avatar-option" type="button" data-avatar="🐼" aria-label="熊猫">🐼</button>
               <button class="avatar-option" type="button" data-avatar="🐯" aria-label="老虎">🐯</button>
-              <button class="avatar-option" type="button" data-avatar="🐸" aria-label="青蛙">🐸</button>
+              <button class="avatar-option" type="button" data-avatar="🐺" aria-label="狼">🐺</button>
               <button class="avatar-option" type="button" data-avatar="🦉" aria-label="猫头鹰">🦉</button>
               <button class="avatar-option" type="button" data-avatar="🐙" aria-label="章鱼">🐙</button>
               <button class="avatar-option" type="button" data-avatar="🦄" aria-label="独角兽">🦄</button>
               <button class="avatar-option" type="button" data-avatar="🐱" aria-label="猫">🐱</button>
             </div>
           </div>
+          <div class="field">
+            <span class="label">牌面皮肤</span>
+            <div class="skin-choice" role="group" aria-label="牌面皮肤">
+              <button class="skin-option" type="button" data-skin-choice="gilded">
+                <strong>鎏金象牙</strong><small>ChatGPT · 经典点阵</small>
+              </button>
+              <button class="skin-option" type="button" data-skin-choice="saintdenis">
+                <strong>圣丹尼</strong><small>Gemini · 大牌面</small>
+              </button>
+            </div>
+          </div>
           <div class="settings-line">
-            <label class="check">
-              <input type="checkbox" id="four-color">
-              <span>四色牌（方块蓝、梅花绿）</span>
-            </label>
             <button class="btn btn-outline btn-sm" type="submit" data-pending-key="profile">保存资料</button>
           </div>
         </form>
