@@ -502,12 +502,12 @@ function renderWaitingBar(bar, table, myId, mySeat) {
 
   const hostButtons = [];
   if (isHost) {
-    if (table.phase === "lobby" || (table.phase === "ended" && !table.settlement)) {
+    if (table.phase === "lobby") {
       hostButtons.push(
         `<button class="btn btn-primary btn-sm" type="button" data-host="start" data-pending-key="start">开始牌局</button>`,
       );
     }
-    if (table.phase === "showdown" || table.phase === "ended") {
+    if (table.phase === "showdown") {
       hostButtons.push(
         `<button class="btn btn-primary btn-sm" type="button" data-host="next" data-pending-key="next">下一手</button>`,
       );
@@ -664,13 +664,28 @@ function renderSettlement() {
   if (!settlement) return;
   const transfers = Array.isArray(settlement.transfers) ? settlement.transfers : [];
   const myId = state?.me?.id || table.me?.id;
-  const isHost = Boolean(state.me?.isHost);
   const config = table.config || {};
   const pendingCount = transfers.filter((item) => item.status !== "verified").length;
 
   $("#settle-sub").textContent =
     `${table.name || "牌桌"} · 第 ${table.handNo ?? 0} 手 · ${transfers.length} 笔转账 · ${pendingCount} 笔未结清`;
-  $("#settle-next").hidden = !isHost;
+
+  const toIssue = transfers.filter(
+    (t) => t.from === myId && (t.status === "pending" || t.status === "failed"),
+  ).length;
+  const toVerify = transfers.filter(
+    (t) => t.to === myId && t.key && t.status !== "verified",
+  ).length;
+  const issueAll = $("#settle-issue-all");
+  const verifyAll = $("#settle-verify-all");
+  if (issueAll) {
+    issueAll.hidden = toIssue === 0;
+    issueAll.textContent = `一键签发（${toIssue}）`;
+  }
+  if (verifyAll) {
+    verifyAll.hidden = toVerify === 0;
+    verifyAll.textContent = `一键验证（${toVerify}）`;
+  }
 
   const unit = transfers[0]?.unit || config.unit || "cost";
   const totalOut = transfers.filter((t) => t.from === myId).reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
@@ -721,7 +736,10 @@ function settlementCard(transfer, myId, config) {
     `<div class="key-label"><span>GATEWAY KEY</span><span>${esc(keyHelp)}</span></div>` +
     (hasKey
       ? `<code class="key-value">${esc(transfer.key)}</code>` +
-        `<div class="key-actions"><button class="btn btn-outline btn-sm" type="button" data-copy-value="${esc(transfer.key)}">复制 key</button></div>`
+        `<div class="key-actions">` +
+        `<button class="btn btn-outline btn-sm" type="button" data-copy-value="${esc(transfer.key)}">复制 key</button>` +
+        `<button class="btn btn-ghost btn-sm" type="button" data-copy-transfer="${esc(transfer.id)}">复制接入信息</button>` +
+        `</div>`
       : `<span class="key-value is-empty">${isPayee ? "尚未收到 key" : "签发后由收款方验证"}</span>`) +
     `</div>`;
 
@@ -730,6 +748,11 @@ function settlementCard(transfer, myId, config) {
     actions.push(
       `<button class="btn btn-primary btn-sm" type="button" data-issue="${esc(transfer.id)}" data-pending-key="settle:${esc(transfer.id)}">签发 key</button>`,
     );
+    if (!state.profile?.gatewayUrl) {
+      actions.push(
+        `<button class="btn btn-ghost btn-sm" type="button" data-share-gateway data-pending-key="share-gateway">共享网关</button>`,
+      );
+    }
   }
   if (isPayee && hasKey && status !== "verified") {
     actions.push(
@@ -793,6 +816,62 @@ async function verifyTransfer(id) {
   if (result.ok) toast("key 验证通过，这笔已结清", "info");
 }
 
+async function bulkIssue() {
+  const transfers = state?.table?.settlement?.transfers || [];
+  const myId = state?.me?.id;
+  const ids = transfers
+    .filter((t) => t.from === myId && (t.status === "pending" || t.status === "failed"))
+    .map((t) => t.id);
+  if (!ids.length) return;
+  const btn = $("#settle-issue-all");
+  let done = 0;
+  for (const id of ids) {
+    if (btn) btn.textContent = `签发中 ${done + 1}/${ids.length}…`;
+    const result = await post("/api/settlement/issue", { transferId: id }, "settle-issue-all");
+    if (!result.ok) break;
+    done += 1;
+  }
+  if (btn) btn.textContent = `一键签发（${Math.max(0, ids.length - done)}）`;
+  if (done) toast(`已签发 ${done} 笔 key`, "info");
+}
+
+async function bulkVerify() {
+  const transfers = state?.table?.settlement?.transfers || [];
+  const myId = state?.me?.id;
+  const ids = transfers
+    .filter((t) => t.to === myId && t.key && t.status !== "verified")
+    .map((t) => t.id);
+  if (!ids.length) return;
+  const btn = $("#settle-verify-all");
+  let done = 0;
+  for (const id of ids) {
+    if (btn) btn.textContent = `验证中 ${done + 1}/${ids.length}…`;
+    const result = await post("/api/settlement/verify", { transferId: id }, "settle-verify-all");
+    if (!result.ok) break;
+    done += 1;
+  }
+  if (btn) btn.textContent = `一键验证（${Math.max(0, ids.length - done)}）`;
+  if (done) toast(`已验证 ${done} 笔 key`, "info");
+}
+
+async function shareGateway() {
+  const result = await post("/api/tailscale/serve-gateway", { port: 8444 }, "share-gateway");
+  if (result.ok) toast(`网关已共享：${result.url}`, "info");
+}
+
+function copyTransferInfo(id) {
+  const transfer = state?.table?.settlement?.transfers?.find((t) => t.id === id);
+  if (!transfer?.key) {
+    toast("还没有收到 key", "warn");
+    return;
+  }
+  const url = transfer.gatewayUrl || state?.profile?.gatewayUrl || "(对方没有填网关地址)";
+  copyText(
+    `网关地址：${url}\nAPI key：${transfer.key}\n用法：OpenAI 兼容客户端，base URL 指向网关（通常加 /v1），API key 填上一行。`,
+    "接入信息已复制",
+  );
+}
+
 function statusLabel(status, isPayer, isPayee) {
   if (status === "pending") return isPayee ? "待对方签发" : "待签发";
   if (status === "issued") return isPayee ? "待验证" : "已签发";
@@ -832,9 +911,18 @@ async function leaveTable() {
   const table = state?.table;
   if (!table) return;
   const host = Boolean(state.me?.isHost);
-  const message = host ? "你是房主，离桌会解散牌局。确认离桌？" : "确认离桌？";
+  if (host && table.phase === "hand") {
+    toast("先打完这一手再离桌", "warn");
+    return;
+  }
+  const unsettled = (table.settlement?.transfers || []).filter(
+    (t) => t.status === "pending" || t.status === "issued",
+  ).length;
+  let message = host ? "你是房主，离桌会解散牌局。" : "";
+  if (unsettled) message += `还有 ${unsettled} 笔未结清，离桌后不会自动完成。`;
+  message += "确认离桌？";
   if (!(await askConfirm(message, "离桌"))) return;
-  const result = await post("/api/table/leave", {}, "leave");
+  const result = await post("/api/table/leave", { force: unsettled > 0 }, "leave");
   if (result.ok && DEMO) {
     view = "lounge";
     render();
@@ -861,6 +949,16 @@ async function submitRebuy() {
 function bindLounge() {
   $("#host-form").addEventListener("submit", onHostSubmit);
   $("#host-form").addEventListener("input", updateUnitHint);
+  $("#host-unit").addEventListener("change", () => {
+    const unit = $("#host-unit").value;
+    const input = $("#host-chip-value");
+    const current = Number(input.value);
+    const otherDefault = unit === "tokens" ? 0.0005 : 100;
+    if (!Number.isFinite(current) || current <= 0 || current === otherDefault) {
+      input.value = unit === "tokens" ? "100" : "0.0005";
+    }
+    updateUnitHint();
+  });
   $("#join-form").addEventListener("submit", onJoinSubmit);
   $("#lounge-profile-form").addEventListener("submit", (event) => {
     event.preventDefault();
@@ -969,11 +1067,12 @@ function updateUnitHint() {
   if (!hint) return;
   const unit = $("#host-unit").value;
   const chipValue = Number($("#host-chip-value").value) || 0;
-  const sample = 10000 * chipValue;
+  const chips = Number($("#host-chips").value) || 10000;
+  const sample = chips * chipValue;
   if (unit === "tokens") {
-    hint.textContent = `1 筹码 = ${trimNumber(chipValue)} tokens · 10,000 筹码 ≈ ${trimNumber(sample)} tokens`;
+    hint.textContent = `1 筹码 = ${trimNumber(chipValue)} tokens · ${fmtChips(chips)} 筹码 ≈ ${trimNumber(sample)} tokens`;
   } else {
-    hint.textContent = `1 筹码 = $${trimNumber(chipValue)} · 10,000 筹码 ≈ $${sample.toFixed(2)}`;
+    hint.textContent = `1 筹码 = $${trimNumber(chipValue)} · ${fmtChips(chips)} 筹码 ≈ $${sample.toFixed(2)}`;
   }
 }
 
@@ -1059,8 +1158,18 @@ function bindDialogs() {
     }
   });
   $("#settle-back").addEventListener("click", () => setView("table"));
-  $("#settle-next").addEventListener("click", nextHand);
+  $("#settle-issue-all").addEventListener("click", bulkIssue);
+  $("#settle-verify-all").addEventListener("click", bulkVerify);
   $("#settle-cards").addEventListener("click", (event) => {
+    if (event.target.closest?.("[data-share-gateway]")) {
+      shareGateway();
+      return;
+    }
+    const info = event.target.closest?.("[data-copy-transfer]");
+    if (info) {
+      copyTransferInfo(info.dataset.copyTransfer);
+      return;
+    }
     const issue = event.target.closest?.("[data-issue]");
     if (issue) {
       issueTransfer(issue.dataset.issue);

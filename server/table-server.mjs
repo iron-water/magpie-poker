@@ -247,6 +247,7 @@ export class TableServer {
     }
     const p = this.table.player(playerId);
     if (!p || p.left) return json(res, 403, { ok: false, error: "不在牌桌上" });
+    const wasOffline = !p.connected;
     p.connected = true;
     p.sittingOut = false;
     const timer = this.closeTimers.get(playerId);
@@ -264,6 +265,10 @@ export class TableServer {
     res.write("retry: 1500\n\n");
     s.streams.add(res);
     this.send(res, this.table.viewFor(playerId));
+    if (wasOffline) {
+      this.onChange();
+      this.broadcast();
+    }
     const beat = setInterval(() => {
       try { res.write(": ping\n\n"); } catch { /* closed */ }
     }, 15_000);

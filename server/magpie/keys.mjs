@@ -149,7 +149,14 @@ export async function verifyKey({ url, key }) {
     return { ok: false, error: "网关地址不合法" };
   }
   if (!/^https?:$/.test(base.protocol)) return { ok: false, error: "只支持 http/https" };
-  base.pathname = base.pathname.replace(/\/+$/, "") + "/v1/models";
+  const path = base.pathname.replace(/\/+$/, "");
+  base.pathname = /\/v1\/models$/.test(path)
+    ? path
+    : /\/v1$/.test(path)
+      ? `${path}/models`
+      : `${path}/v1/models`;
+  base.search = "";
+  base.hash = "";
   let res;
   try {
     res = await fetch(base, {

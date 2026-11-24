@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { Table, PokerError } from "./poker/game.mjs";
 import { Store } from "./store.mjs";
 import { TableServer } from "./table-server.mjs";
-import { PeerClient } from "./net/peer.mjs";
+import { PeerClient, PeerError } from "./net/peer.mjs";
 import { createInvite, inviteUrl, parseInvite } from "./net/invite.mjs";
 import { generateIdentity } from "./net/crypto.mjs";
 import {
@@ -127,6 +127,13 @@ export class LocalApp {
   }
 
   async bootstrap() {
+    // Bring the table back first: a Tailscale query can take seconds and used
+    // to leave a running table unavailable on every restart.
+    try {
+      await this.resumeHost();
+    } catch (err) {
+      this.notify("error", `恢复上次牌桌失败：${redact(String(err?.message || err))}`);
+    }
     if (this.offline) {
       this.ts = { installed: false, name: "local", ip: "127.0.0.1", dns: "", error: null };
     } else {
@@ -137,11 +144,6 @@ export class LocalApp {
       } catch (err) {
         this.ts = { installed: false, error: redact(String(err?.message || err)) };
       }
-    }
-    try {
-      await this.resumeHost();
-    } catch (err) {
-      this.notify("error", `恢复上次牌桌失败：${redact(String(err?.message || err))}`);
     }
     if (this.mode === "host") {
       this.buildInvites();
@@ -408,8 +410,15 @@ export class LocalApp {
     return { ok: true, playerId: peer.playerId, seat: peer.seat };
   }
 
-  async leaveTable() {
+  async leaveTable(body = {}) {
     if (this.mode === "host") {
+      if (this.table?.phase === "hand") throw new PokerError("先打完这一手再离桌", "in_hand");
+      const unsettled = this.table?.settlement?.transfers?.some(
+        (t) => t.status === "pending" || t.status === "issued",
+      );
+      if (unsettled && body.force !== true) {
+        throw new PokerError("还有未结清的转账；确认后再离桌", "unsettled");
+      }
       if (this.tableServer) await this.tableServer.close();
       this.tableServer = null;
       this.table = null;
@@ -604,7 +613,7 @@ export class LocalApp {
         return json(res, 200, r);
       }
       case "/api/table/leave": {
-        const r = await this.leaveTable();
+        const r = await this.leaveTable(body);
         return json(res, 200, r);
       }
       case "/api/table/start":
