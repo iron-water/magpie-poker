@@ -1,0 +1,53 @@
+{
+  "name": "magpie-poker",
+  "version": "0.1.0",
+  "description": "Multiplayer Texas Hold'em inside magpie: tables over Tailscale, chips settled with magpie gateway keys.",
+  "type": "module",
+  "main": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "server",
+    "web",
+    "assets",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-page",
+    "magpie-plugin",
+    "texas-holdem",
+    "poker",
+    "tailscale"
+  ],
+  "license": "MIT",
+  "engines": {
+    "magpie": ">=0.1.1340"
+  },
+  "magpie": {
+    "icon": "assets/icon.svg",
+    "page": {
+      "title": "Poker",
+      "titles": {
+        "zh": "牌桌",
+        "zh-TW": "牌桌",
+        "ja": "ポーカー"
+      },
+      "file": "web/boot.html",
+      "icon": "assets/icon.svg",
+      "service": {
+        "port": 3481,
+        "option": "port"
+      }
+    },
+    "options": {
+      "port": 3481,
+      "tablePort": 3482
+    }
+  },
+  "scripts": {
+    "start": "node server/standalone.mjs",
+    "test": "node --test test/"
+  }
+}

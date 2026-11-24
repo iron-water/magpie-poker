@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>牌桌</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: grid; place-items: center;
+    background: radial-gradient(circle at 50% 28%, #1c3a31 0%, #0c1917 62%, #070d0d 100%);
+    color: #e9e4d6;
+    font: 15px/1.6 "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  }
+  .card { text-align: center; padding: 40px 52px; }
+  .mark {
+    width: 74px; height: 74px; margin: 0 auto 18px;
+    display: grid; place-items: center;
+    border: 1px solid rgba(233,228,214,.28);
+    border-radius: 50%;
+    font-size: 34px; color: #d9b45b;
+    box-shadow: 0 0 0 8px rgba(217,180,91,.05);
+  }
+  h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; letter-spacing: .08em; }
+  p { margin: 0; color: #9aa6a1; font-size: 13px; }
+  button {
+    margin: 18px 0 0; padding: 7px 18px;
+    color: #e9e4d6; background: rgba(255,255,255,.06);
+    border: 1px solid rgba(233,228,214,.24); border-radius: 999px;
+    font: inherit; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: rgba(255,255,255,.1); }
+  .dots::after { content: ""; animation: dots 1.4s steps(4, end) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: "."; } 50% { content: ".."; } 75% { content: "..."; } }
+  @media (prefers-reduced-motion: reduce) { .dots::after { animation: none; content: "…"; } }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="mark">♠</div>
+    <h1>牌 桌</h1>
+    <p id="said">正在连接本地牌桌服务<span class="dots"></span></p>
+  </div>
+<script>
+(async function () {
+  var DEFAULT_PORT = 3481;
+  var port = DEFAULT_PORT;
+  var service = "";
+  var theme = "";
+  try {
+    var ready = await window.magpie?.ready;
+    if (ready && typeof ready.dark === "boolean") theme = ready.dark ? "dark" : "light";
+  } catch (e) { /* standalone page */ }
+  try {
+    var s = window.magpie?.service;
+    if (typeof s === "string" && /^https?:\/\//.test(s)) service = s;
+  } catch (e) { /* older magpie */ }
+  try {
+    var o = await window.magpie?.options?.get?.();
+    if (o && Number(o.port) > 0) port = Number(o.port);
+  } catch (e) { /* default port */ }
+
+  var q = theme ? "?theme=" + encodeURIComponent(theme) : "";
+  var target = service ? service + q : "http://127.0.0.1:" + port + "/" + q;
+
+  // WebKit reports no error when a navigation cannot be made; if this document
+  // is still here after 6s, the service did not come up.
+  setTimeout(function () {
+    var said = document.getElementById("said");
+    if (!said || document.getElementById("retry")) return;
+    said.textContent = "本地牌桌服务没有起来（127.0.0.1:" + port + "）";
+    var b = document.createElement("button");
+    b.id = "retry";
+    b.type = "button";
+    b.textContent = "重试";
+    b.addEventListener("click", function () { location.reload(); });
+    said.after(b);
+  }, 6000);
+
+  location.replace(target);
+})();
+</script>
+</body>
+</html>

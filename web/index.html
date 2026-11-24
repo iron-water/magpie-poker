@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="zh-CN" data-four-color="0">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>铁水牌局 · 德州扑克</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230d1f18'/%3E%3Ctext x='32' y='46' font-size='38' text-anchor='middle' fill='%23e4cb97'%3E%E2%99%A0%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">♠</span>
+        <div class="brand-text">
+          <span class="brand-name">铁水牌局</span>
+          <span class="brand-sub">PRIVATE HOLD'EM</span>
+        </div>
+      </div>
+
+      <div class="top-meta" id="top-table" aria-live="polite"></div>
+
+      <div class="top-actions">
+        <div class="conn" id="conn" data-state="connecting" title="本机牌局服务连接状态">
+          <span class="conn-dot" aria-hidden="true"></span>
+          <span class="conn-text" id="conn-text">连接中</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-settlement" hidden>结算</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-invite" hidden>邀请</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-log" hidden>日志</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-settings">设置</button>
+        <button class="btn btn-ghost btn-sm" type="button" id="btn-end" data-pending-key="end" hidden>结束</button>
+        <button class="btn btn-danger-ghost btn-sm" type="button" id="btn-leave" data-pending-key="leave" hidden>离桌</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <!-- ============================== 大厅 ============================== -->
+      <section class="view lounge-view" id="lounge-view">
+        <div class="lounge-wrap">
+          <div class="lounge-hero">
+            <p class="eyebrow">PRIVATE TABLE · 私密牌局</p>
+            <h1 class="hero-title">今夜，<em>牌桌见</em>。</h1>
+            <p class="hero-copy">
+              一桌老友，一副牌，一串邀请码。牌局跑在这台机器上，跨过 Tailscale 直连，
+              筹码用 magpie gateway key 结清。
+            </p>
+            <div class="hero-decor" aria-hidden="true">
+              <span class="chip chip-red"></span>
+              <span class="chip chip-gold"></span>
+              <span class="chip chip-blue"></span>
+              <span class="chip chip-dark"></span>
+              <span class="hero-suit">♠</span>
+            </div>
+            <div class="host-strip" id="lounge-host-info"></div>
+          </div>
+
+          <div class="lounge-grid">
+            <form class="panel host-panel" id="host-form" novalidate>
+              <div class="panel-head">
+                <div>
+                  <p class="eyebrow">HOST</p>
+                  <h2>开一桌</h2>
+                </div>
+                <span class="panel-mark" aria-hidden="true">D</span>
+              </div>
+
+              <div class="field field-wide">
+                <label for="host-name">牌局名称</label>
+                <input class="input" id="host-name" name="name" maxlength="32" placeholder="周五牌局" autocomplete="off">
+              </div>
+
+              <div class="field-grid">
+                <div class="field">
+                  <label for="host-sb">小盲 <span class="unit">筹码</span></label>
+                  <input class="input" id="host-sb" type="number" min="1" step="1" value="25" inputmode="numeric">
+                </div>
+                <div class="field">
+                  <label for="host-bb">大盲 <span class="unit">筹码</span></label>
+                  <input class="input" id="host-bb" type="number" min="2" step="1" value="50" inputmode="numeric">
+                </div>
+                <div class="field">
+                  <label for="host-ante">前注 <span class="unit">筹码</span></label>
+                  <input class="input" id="host-ante" type="number" min="0" step="1" value="0" inputmode="numeric">
+                </div>
+                <div class="field">
+                  <label for="host-chips">带入 <span class="unit">筹码</span></label>
+                  <input class="input" id="host-chips" type="number" min="1" step="1" value="10000" inputmode="numeric">
+                </div>
+                <div class="field">
+                  <label for="host-seats">座位</label>
+                  <select class="input" id="host-seats">
+                    <option value="2">2 人</option>
+                    <option value="3">3 人</option>
+                    <option value="4">4 人</option>
+                    <option value="5">5 人</option>
+                    <option value="6" selected>6 人</option>
+                    <option value="7">7 人</option>
+                    <option value="8">8 人</option>
+                    <option value="9">9 人</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="host-seconds">行动 / 秒</label>
+                  <input class="input" id="host-seconds" type="number" min="10" max="180" step="5" value="30" inputmode="numeric">
+                </div>
+                <div class="field">
+                  <label for="host-unit">结算单位</label>
+                  <select class="input" id="host-unit">
+                    <option value="cost">金额（USD）</option>
+                    <option value="tokens">tokens</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="host-chip-value">筹码价值</label>
+                  <input class="input" id="host-chip-value" type="number" min="0.0001" step="0.0001" value="0.0005" inputmode="decimal">
+                </div>
+              </div>
+
+              <p class="hint" id="host-unit-hint">1 筹码 = $0.0005 · 10,000 筹码 ≈ $5.00</p>
+
+              <div class="panel-foot">
+                <button class="btn btn-primary btn-block" type="submit" id="host-submit" data-pending-key="host">创建牌桌</button>
+              </div>
+            </form>
+
+            <div class="lounge-side">
+              <form class="panel join-panel" id="join-form" novalidate>
+                <div class="panel-head">
+                  <div>
+                    <p class="eyebrow">JOIN</p>
+                    <h2>入一桌</h2>
+                  </div>
+                  <span class="panel-mark panel-mark--soft" aria-hidden="true">♣</span>
+                </div>
+                <div class="field field-wide">
+                  <label for="join-code">粘贴邀请码</label>
+                  <textarea class="input textarea" id="join-code" rows="3" placeholder="POKER1.eyJ2Ijox…" spellcheck="false"></textarea>
+                </div>
+                <div class="panel-foot">
+                  <button class="btn btn-primary btn-block" type="submit" id="join-submit" data-pending-key="join">加入牌桌</button>
+                </div>
+              </form>
+
+              <form class="panel profile-panel" id="lounge-profile-form" novalidate>
+                <div class="panel-head panel-head--tight">
+                  <div>
+                    <p class="eyebrow">PROFILE</p>
+                    <h2>你的样子</h2>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="lounge-name">昵称</label>
+                  <input class="input" id="lounge-name" maxlength="20" autocomplete="nickname">
+                </div>
+                <div class="field">
+                  <span class="label">头像</span>
+                  <div class="avatar-picker" id="lounge-avatars" data-picker="lounge" role="group" aria-label="选择头像">
+                    <button class="avatar-option" type="button" data-avatar="🦊" aria-label="狐狸">🦊</button>
+                    <button class="avatar-option" type="button" data-avatar="🐼" aria-label="熊猫">🐼</button>
+                    <button class="avatar-option" type="button" data-avatar="🐯" aria-label="老虎">🐯</button>
+                    <button class="avatar-option" type="button" data-avatar="🐸" aria-label="青蛙">🐸</button>
+                    <button class="avatar-option" type="button" data-avatar="🦉" aria-label="猫头鹰">🦉</button>
+                    <button class="avatar-option" type="button" data-avatar="🐙" aria-label="章鱼">🐙</button>
+                    <button class="avatar-option" type="button" data-avatar="🦄" aria-label="独角兽">🦄</button>
+                    <button class="avatar-option" type="button" data-avatar="🐱" aria-label="猫">🐱</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="lounge-gateway">我的网关地址</label>
+                  <input class="input" id="lounge-gateway" placeholder="https://…ts.net:8444" spellcheck="false" autocomplete="url">
+                </div>
+                <div class="panel-foot">
+                  <button class="btn btn-outline btn-block" type="submit" data-pending-key="profile">保存资料</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================== 牌桌 ============================== -->
+      <section class="view table-view" id="table-view" hidden>
+        <div class="table-stage" id="table-stage">
+          <div class="felt" aria-hidden="true">
+            <span class="felt-ring"></span>
+            <span class="felt-mark">铁水牌局</span>
+          </div>
+
+          <div class="table-center">
+            <div class="pot-block">
+              <div class="pot-main">
+                <span class="pot-label">底池</span>
+                <strong class="pot-amount" id="pot-amount">0</strong>
+                <span class="pot-fiat" id="pot-fiat"></span>
+              </div>
+              <div class="pot-side" id="pot-side"></div>
+            </div>
+            <div class="board" id="board" aria-label="公共牌"></div>
+            <div class="center-meta" id="hand-meta"></div>
+            <div class="turn-hint" id="turn-hint" aria-live="polite"></div>
+          </div>
+
+          <div class="seats" id="seats"></div>
+        </div>
+
+        <div class="action-bar" id="action-bar"></div>
+      </section>
+
+      <!-- ============================== 结算 ============================== -->
+      <section class="view settlement-view" id="settlement-view" hidden>
+        <div class="settle-wrap">
+          <div class="settle-head">
+            <div>
+              <p class="eyebrow">SETTLEMENT</p>
+              <h1 class="settle-title">牌局结算</h1>
+              <p class="settle-sub" id="settle-sub"></p>
+            </div>
+            <div class="settle-actions">
+              <button class="btn btn-ghost" type="button" id="settle-back">返回牌桌</button>
+              <button class="btn btn-primary" type="button" id="settle-next" data-pending-key="next" hidden>下一手</button>
+            </div>
+          </div>
+
+          <div class="settle-summary" id="settle-summary"></div>
+          <div class="settle-grid" id="settle-cards"></div>
+
+          <p class="settle-foot">
+            每位对手一张卡。欠款方在本机签发 magpie gateway key，收款方验证后即视为结清；
+            key 只显示给收款人，请勿转发。
+          </p>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============================== 弹层 ============================== -->
+  <dialog class="modal" id="modal-invite" aria-labelledby="invite-title">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">INVITE</p>
+        <h2 id="invite-title">邀请玩家</h2>
+      </div>
+      <button class="icon-btn" type="button" data-close="invite" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="field">
+        <label for="invite-code">邀请码</label>
+        <textarea class="input textarea code-area" id="invite-code" rows="3" readonly spellcheck="false"></textarea>
+        <button class="btn btn-outline btn-sm mt" type="button" id="copy-code">复制邀请码</button>
+      </div>
+      <div class="field">
+        <label for="invite-direct">直连地址</label>
+        <div class="input-row">
+          <input class="input" id="invite-direct" readonly spellcheck="false">
+          <button class="btn btn-outline btn-sm" type="button" id="copy-direct">复制</button>
+        </div>
+      </div>
+      <div class="notice-box">
+        <span class="notice-icon" aria-hidden="true">♠</span>
+        <div>
+          <p>把邀请码发给朋友，或让他们打开直连地址。双方都需要在同一个 Tailscale 网络里。</p>
+          <p class="muted" id="invite-served"></p>
+        </div>
+      </div>
+    </div>
+  </dialog>
+
+  <dialog class="modal modal-wide" id="modal-settings" aria-labelledby="settings-title">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">SETTINGS</p>
+        <h2 id="settings-title">设置</h2>
+      </div>
+      <button class="icon-btn" type="button" data-close="settings" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body settings-body">
+      <section class="settings-section">
+        <h3>资料</h3>
+        <form id="settings-profile-form" novalidate>
+          <div class="settings-grid">
+            <div class="field">
+              <label for="settings-name">昵称</label>
+              <input class="input" id="settings-name" maxlength="20" autocomplete="nickname">
+            </div>
+            <div class="field">
+              <label for="settings-gateway">网关地址</label>
+              <input class="input" id="settings-gateway" placeholder="https://…ts.net:8444" spellcheck="false" autocomplete="url">
+            </div>
+          </div>
+          <div class="field">
+            <span class="label">头像</span>
+            <div class="avatar-picker" id="settings-avatars" data-picker="settings" role="group" aria-label="选择头像">
+              <button class="avatar-option" type="button" data-avatar="🦊" aria-label="狐狸">🦊</button>
+              <button class="avatar-option" type="button" data-avatar="🐼" aria-label="熊猫">🐼</button>
+              <button class="avatar-option" type="button" data-avatar="🐯" aria-label="老虎">🐯</button>
+              <button class="avatar-option" type="button" data-avatar="🐸" aria-label="青蛙">🐸</button>
+              <button class="avatar-option" type="button" data-avatar="🦉" aria-label="猫头鹰">🦉</button>
+              <button class="avatar-option" type="button" data-avatar="🐙" aria-label="章鱼">🐙</button>
+              <button class="avatar-option" type="button" data-avatar="🦄" aria-label="独角兽">🦄</button>
+              <button class="avatar-option" type="button" data-avatar="🐱" aria-label="猫">🐱</button>
+            </div>
+          </div>
+          <div class="settings-line">
+            <label class="check">
+              <input type="checkbox" id="four-color">
+              <span>四色牌（方块蓝、梅花绿）</span>
+            </label>
+            <button class="btn btn-outline btn-sm" type="submit" data-pending-key="profile">保存资料</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-head">
+          <h3>本机服务</h3>
+          <button class="btn btn-ghost btn-sm" type="button" id="health-check">检查服务</button>
+        </div>
+        <dl class="status-list" id="health-status">
+          <div><dt>状态</dt><dd>未检查</dd></div>
+        </dl>
+        <dl class="status-list" id="settings-tailscale-status">
+          <div><dt>Tailscale</dt><dd>读取中…</dd></div>
+        </dl>
+        <div class="button-row">
+          <button class="btn btn-outline btn-sm" type="button" id="btn-tailscale-serve" data-pending-key="tailscale-serve">Serve 牌桌 :8443</button>
+          <button class="btn btn-outline btn-sm" type="button" id="btn-tailscale-gateway" data-pending-key="tailscale-gateway">Serve 网关 :8444</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3>银行 key</h3>
+        <dl class="status-list" id="settings-keys-status">
+          <div><dt>magpie</dt><dd>读取中…</dd></div>
+        </dl>
+        <div class="key-list" id="settings-key-list"></div>
+        <div class="button-row">
+          <button class="btn btn-outline btn-sm" type="button" id="btn-bank-key" data-pending-key="bank-key">新建 poker-bank key</button>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <h3>验证对方的 key</h3>
+        <form id="verify-form" novalidate>
+          <div class="settings-grid">
+            <div class="field">
+              <label for="verify-url">网关地址</label>
+              <input class="input" id="verify-url" placeholder="https://…ts.net:8444" spellcheck="false">
+            </div>
+            <div class="field">
+              <label for="verify-key">key</label>
+              <input class="input" id="verify-key" placeholder="sk-…" spellcheck="false" autocomplete="off">
+            </div>
+          </div>
+          <div class="settings-line">
+            <p class="inline-status" id="verify-status" aria-live="polite"></p>
+            <button class="btn btn-primary btn-sm" type="submit" data-pending-key="verify-key">验证</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="modal modal-wide" id="modal-log" aria-labelledby="log-title">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">TABLE LOG</p>
+        <h2 id="log-title">牌桌日志</h2>
+      </div>
+      <button class="icon-btn" type="button" data-close="log" aria-label="关闭">×</button>
+    </div>
+    <div class="modal-body">
+      <ol class="log-list" id="log-list"></ol>
+      <form class="chat-form" id="chat-form" novalidate>
+        <label class="sr-only" for="chat-text">说点什么</label>
+        <input class="input" id="chat-text" maxlength="120" placeholder="说点什么…" autocomplete="off">
+        <button class="btn btn-primary btn-sm" type="submit" data-pending-key="chat">发送</button>
+      </form>
+    </div>
+  </dialog>
+
+  <dialog class="modal modal-confirm" id="modal-confirm" aria-labelledby="confirm-title">
+    <div class="modal-head">
+      <div>
+        <p class="eyebrow">CONFIRM</p>
+        <h2 id="confirm-title">确认</h2>
+      </div>
+    </div>
+    <div class="modal-body">
+      <p class="confirm-copy" id="confirm-text"></p>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" type="button" id="confirm-cancel" data-close="confirm">取消</button>
+        <button class="btn btn-primary" type="button" id="confirm-ok">确认</button>
+      </div>
+    </div>
+  </dialog>
+
+  <div class="toasts" id="toasts" role="status" aria-live="polite" aria-atomic="false"></div>
+
+  <noscript>
+    <div class="noscript">这个牌桌需要 JavaScript。</div>
+  </noscript>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
