@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { chmodSync, existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -11,7 +11,7 @@ function binaryName() {
   return "magpie-poker";
 }
 const bin = join(root, "bin", binaryName());
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const HEALTH_MS = 1500;
 const START_MS = 15000;
 
@@ -38,7 +38,7 @@ async function waitFor(port) {
   const until = Date.now() + START_MS;
   while (Date.now() < until) {
     const j = await health(port);
-    if (j) return j;
+    if (j && j.version === VERSION) return j;
     await new Promise((r) => setTimeout(r, 250));
   }
   return null;
@@ -82,11 +82,15 @@ async function start(options = {}) {
       return;
     }
     if (j && j.version !== VERSION) {
-      console.error(`[poker] old service on :${port} (${j.version}); stop it before loading this plugin`);
+      throw new Error(`service on :${port} is ${j.version}, expected ${VERSION}; stop the old service first`);
     }
     if (!existsSync(bin)) {
       throw new Error(`missing Go binary: ${bin} (build it with: go build -o bin/magpie-poker.exe ./cmd/magpie-poker)`);
     }
+    if (process.platform !== "win32") {
+      try { chmodSync(bin, 0o755); } catch { /* a read-only install still gets an EACCES below */ }
+    }
+    let spawnError = null;
     child = spawn(bin, [
       "--port", String(port),
       "--table-port", String(tablePort),
@@ -101,11 +105,16 @@ async function start(options = {}) {
       child = null;
     });
     child.on("error", (err) => {
+      spawnError = err;
       console.error(`[poker] Go service failed: ${err?.message || err}`);
       child = null;
     });
     const up = await waitFor(port);
-    if (!up) throw new Error(`Go service did not answer on 127.0.0.1:${port}`);
+    if (!up) {
+      throw new Error(spawnError
+        ? `cannot start ${bin}: ${spawnError.message}`
+        : `Go service did not answer on 127.0.0.1:${port}`);
+    }
     console.log(`[poker] Go service ready on http://127.0.0.1:${port}`);
     startMonitor(port, tablePort);
   })().finally(() => {
@@ -114,11 +123,14 @@ async function start(options = {}) {
   return starting;
 }
 
-process.on("exit", () => {
+function stopChild() {
   if (child && !child.killed) {
     try { child.kill(); } catch { /* ignore */ }
   }
-});
+}
+process.on("exit", stopChild);
+process.on("SIGTERM", () => { stopChild(); process.exit(0); });
+process.on("SIGINT", () => { stopChild(); process.exit(0); });
 
 // magpie's Bun host calls exported functions as plugin entries.
 export default {

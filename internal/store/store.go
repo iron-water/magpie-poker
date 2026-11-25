@@ -29,6 +29,13 @@ type Bank struct {
 	Name string `json:"name"`
 }
 
+// PeerIdentity is the stable guest X25519 identity; its private half stays
+// on this machine.
+type PeerIdentity struct {
+	Pub  string `json:"pub"`
+	Priv string `json:"priv"`
+}
+
 type Store struct {
 	Dir string
 }
@@ -74,20 +81,43 @@ func readJSON(path string, v any) error {
 	return json.Unmarshal(b, v)
 }
 
+func (s *Store) writeAtomic(name string, b []byte) error {
+	tmp := s.path(name) + ".tmp"
+	if f, err := os.CreateTemp(s.Dir, "."+name+"-*.tmp"); err == nil {
+		tmp = f.Name()
+		if err := f.Chmod(0o600); err != nil {
+			f.Close()
+			os.Remove(tmp)
+			return err
+		}
+		_, werr := f.Write(b)
+		cerr := f.Close()
+		if werr != nil {
+			os.Remove(tmp)
+			return werr
+		}
+		if cerr != nil {
+			os.Remove(tmp)
+			return cerr
+		}
+	} else if err := os.WriteFile(tmp, b, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, s.path(name)); err != nil {
+		os.Remove(tmp)
+		// Windows can refuse a replace-rename; the caller's data is still
+		// better than a stale profile, so fall back to a direct write.
+		return os.WriteFile(s.path(name), b, 0o600)
+	}
+	return nil
+}
+
 func (s *Store) write(name string, v any) error {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.path(name) + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.path(name)); err != nil {
-		os.Remove(tmp)
-		return os.WriteFile(s.path(name), b, 0o600)
-	}
-	return nil
+	return s.writeAtomic(name, b)
 }
 
 func defaultName() string {
@@ -154,15 +184,7 @@ func (s *Store) SaveTable(id string, data []byte) error {
 	if id == "" {
 		return nil
 	}
-	tmp := s.path("table-" + id + ".json.tmp")
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.path("table-"+id+".json")); err != nil {
-		os.Remove(tmp)
-		return os.WriteFile(s.path("table-"+id+".json"), data, 0o600)
-	}
-	return nil
+	return s.writeAtomic("table-"+id+".json", data)
 }
 
 func (s *Store) LoadBank() *Bank {
@@ -171,6 +193,16 @@ func (s *Store) LoadBank() *Bank {
 		return nil
 	}
 	return &b
+}
+
+func (s *Store) LoadPeerIdentity() PeerIdentity {
+	var p PeerIdentity
+	_ = readJSON(s.path("peer.json"), &p)
+	return p
+}
+
+func (s *Store) SavePeerIdentity(p PeerIdentity) error {
+	return s.write("peer.json", p)
 }
 
 func (s *Store) SaveBank(b *Bank) error {

@@ -58,6 +58,26 @@ func decodeKey(value, label string) ([]byte, error) {
 // DecodeKey parses a 32-byte base64url value.
 func DecodeKey(value, label string) ([]byte, error) { return decodeKey(value, label) }
 
+// ValidateIdentity checks that Pub and Priv encode the same X25519 key pair.
+func ValidateIdentity(identity Identity) error {
+	pub, err := PublicKey(identity.Pub)
+	if err != nil {
+		return err
+	}
+	raw, err := decodeKey(identity.Priv, "私钥")
+	if err != nil {
+		return err
+	}
+	priv, err := ecdh.X25519().NewPrivateKey(raw)
+	if err != nil {
+		return err
+	}
+	if !SafeEqual(string(priv.PublicKey().Bytes()), string(pub.Bytes())) {
+		return errors.New("公钥与私钥不匹配")
+	}
+	return nil
+}
+
 // EncodeKey encodes raw bytes as base64url.
 func EncodeKey(raw []byte) string { return encodeKey(raw) }
 

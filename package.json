@@ -1,6 +1,6 @@
 {
   "name": "magpie-poker",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Multiplayer Texas Hold'em inside magpie: tables over Tailscale, chips settled with magpie gateway keys.",
   "type": "module",
   "main": "./index.mjs",

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -221,6 +222,9 @@ func normalizeInvite(doc any) (Invite, error) {
 	if err != nil {
 		return Invite{}, err
 	}
+	if !validInviteHost(host) {
+		return Invite{}, errors.New("主机地址不合法")
+	}
 	hostName, err := requireText(obj, "hostName", "主机名", 64)
 	if err != nil {
 		return Invite{}, err
@@ -267,6 +271,27 @@ func normalizeInvite(doc any) (Invite, error) {
 		HostName:  hostName,
 		ExpiresAt: expiresAt,
 	}, nil
+}
+
+func validInviteHost(host string) bool {
+	host = strings.TrimSpace(host)
+	if host == "" || len(host) > 253 {
+		return false
+	}
+	if net.ParseIP(host) != nil {
+		return true
+	}
+	for _, label := range strings.Split(host, ".") {
+		if label == "" || len(label) > 63 || label[0] == '-' || label[len(label)-1] == '-' {
+			return false
+		}
+		for _, r := range label {
+			if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // InviteURL builds a page link with the code in the fragment.

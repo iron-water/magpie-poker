@@ -23,7 +23,7 @@ import (
 )
 
 const Name = "magpie-poker"
-const Version = "0.2.0"
+const Version = "0.3.0"
 
 type Options struct {
 	Port      int
@@ -50,10 +50,13 @@ type HostState struct {
 }
 
 type App struct {
-	mu      sync.Mutex
-	opts    Options
-	store   *store.Store
-	profile store.Profile
+	mu          sync.Mutex
+	lifecycleMu sync.Mutex
+	persistMu   sync.Mutex
+	settleMu    sync.Mutex
+	opts        Options
+	store       *store.Store
+	profile     store.Profile
 
 	mode         string
 	table        *game.Table
@@ -65,6 +68,7 @@ type App struct {
 	serve        any
 	keys         magpiecli.KeysState
 	bank         *store.Bank
+	peerIdentity netx.Identity
 	notice       *Notice
 	errText      string
 	started      time.Time
@@ -99,6 +103,17 @@ func New(opts Options) (*App, error) {
 		started: time.Now(),
 	}
 	a.bank = st.LoadBank()
+	saved := st.LoadPeerIdentity()
+	identity := netx.Identity{Pub: saved.Pub, Priv: saved.Priv}
+	if err := netx.ValidateIdentity(identity); err != nil {
+		generated, genErr := netx.GenerateIdentity()
+		if genErr != nil {
+			return nil, genErr
+		}
+		identity = generated
+		_ = st.SavePeerIdentity(store.PeerIdentity{Pub: identity.Pub, Priv: identity.Priv})
+	}
+	a.peerIdentity = identity
 	a.keys = magpiecli.KeysState{Magpie: magpiecli.Bin() != "", Bin: magpiecli.Bin(), All: []magpiecli.Key{}}
 	return a, nil
 }
@@ -176,6 +191,8 @@ func (a *App) onTableChange() {
 }
 
 func (a *App) persist() {
+	a.persistMu.Lock()
+	defer a.persistMu.Unlock()
 	a.mu.Lock()
 	table := a.table
 	host := a.host
@@ -240,7 +257,55 @@ func randomSeed() string {
 	return hex.EncodeToString(b)
 }
 
+func (a *App) tryServeTable(tableID string, port int) {
+	ts := magpiecli.TailscaleStatusNow()
+	if !ts.Installed || ts.DNS == "" {
+		return
+	}
+	url, err := magpiecli.EnableServe(port, 8443)
+	if err != nil {
+		a.logf("auto tailscale serve: %v", err)
+		a.notify("warn", "Tailscale 自动共享失败，本桌使用直连邀请码")
+		return
+	}
+	a.mu.Lock()
+	if a.host == nil || a.host.TableID != tableID {
+		a.mu.Unlock()
+		return
+	}
+	a.host.ServedURL = url
+	a.mu.Unlock()
+	a.persist()
+	a.push()
+}
+
+func (a *App) ensureGatewayURL() (string, error) {
+	a.mu.Lock()
+	current := a.profile.GatewayURL
+	a.mu.Unlock()
+	if current != "" {
+		return current, nil
+	}
+	ts := magpiecli.TailscaleStatusNow()
+	if !ts.Installed || ts.DNS == "" {
+		return "", errors.New("Tailscale 未连接")
+	}
+	url, err := magpiecli.EnableServe(magpiecli.LocalGatewayPort(), 8444)
+	if err != nil {
+		return "", err
+	}
+	a.mu.Lock()
+	a.profile.GatewayURL = url
+	profile := a.profile
+	a.mu.Unlock()
+	_ = a.store.SaveProfile(profile)
+	a.push()
+	return url, nil
+}
+
 func (a *App) hostTable(req hostRequest) (map[string]any, error) {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
 	a.mu.Lock()
 	if a.mode != "idle" {
 		a.mu.Unlock()
@@ -260,14 +325,15 @@ func (a *App) hostTable(req hostRequest) (map[string]any, error) {
 		tableName = "周五牌局"
 	}
 	table := game.NewTable(tableID, tableName, hostID, req.Config)
-	_, err := table.AddPlayer(game.PlayerInput{
-		ID: hostID, Name: profile.Name, Avatar: profile.Avatar, GatewayURL: profile.GatewayURL,
-		Tailscale: map[string]any{"name": ts.Name, "dns": ts.DNS, "ip": ts.IP},
-	})
+	identity, err := netx.GenerateIdentity()
 	if err != nil {
 		return nil, err
 	}
-	identity, err := netx.GenerateIdentity()
+	_, err = table.AddPlayer(game.PlayerInput{
+		ID: hostID, Name: profile.Name, Avatar: profile.Avatar, GatewayURL: profile.GatewayURL,
+		Tailscale: map[string]any{"name": ts.Name, "dns": ts.DNS, "ip": ts.IP},
+		Pub:       identity.Pub,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -288,10 +354,13 @@ func (a *App) hostTable(req hostRequest) (map[string]any, error) {
 	a.notify("info", "牌桌已开："+tableName)
 	a.push()
 	a.tableServer.Broadcast()
+	go a.tryServeTable(tableID, port)
 	return a.hostViewMap(), nil
 }
 
 func (a *App) joinTable(code string) (map[string]any, error) {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
 	a.mu.Lock()
 	if a.mode != "idle" {
 		a.mu.Unlock()
@@ -308,7 +377,10 @@ func (a *App) joinTable(code string) (map[string]any, error) {
 	if invite.ExpiresAt > 0 && invite.ExpiresAt < time.Now().UnixMilli() {
 		return nil, errors.New("邀请码已过期")
 	}
-	cl := peer.New(invite, peer.Profile{
+	a.mu.Lock()
+	identity := a.peerIdentity
+	a.mu.Unlock()
+	cl := peer.NewWithIdentity(invite, identity, peer.Profile{
 		Name: profile.Name, Avatar: profile.Avatar, GatewayURL: profile.GatewayURL, Tailscale: ts.Installed,
 	}, func(raw json.RawMessage) {
 		a.mu.Lock()
@@ -319,6 +391,16 @@ func (a *App) joinTable(code string) (map[string]any, error) {
 	}, func(level, text string) {
 		a.notify(level, text)
 	}, func(status string) {
+		a.mu.Lock()
+		switch status {
+		case "online":
+			if a.errText == "主机连接已断开" {
+				a.errText = ""
+			}
+		case "offline", "closed":
+			a.errText = "主机连接已断开"
+		}
+		a.mu.Unlock()
 		a.push()
 	})
 	if err := cl.Connect(); err != nil {
@@ -338,6 +420,10 @@ func (a *App) joinTable(code string) (map[string]any, error) {
 }
 
 func (a *App) leaveTable(force bool) error {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
+	a.settleMu.Lock()
+	defer a.settleMu.Unlock()
 	a.mu.Lock()
 	mode := a.mode
 	table := a.table
@@ -360,6 +446,7 @@ func (a *App) leaveTable(force bool) error {
 		if table != nil {
 			tableID = table.ID()
 		}
+		a.persistMu.Lock()
 		a.mu.Lock()
 		a.table = nil
 		a.host = nil
@@ -369,6 +456,7 @@ func (a *App) leaveTable(force bool) error {
 		a.mu.Unlock()
 		a.store.ClearHost()
 		a.store.ClearTable(tableID)
+		a.persistMu.Unlock()
 		a.notify("info", "已离开牌桌")
 		return nil
 	}
@@ -464,7 +552,7 @@ func (a *App) state() map[string]any {
 	tableRaw, me := a.tableAndMeLocked()
 	status := any(nil)
 	if a.peer != nil {
-		status = a.peer.Status
+		status = a.peer.StatusText()
 	}
 	host := map[string]any{
 		"name": a.ts.Name, "ip": a.ts.IP, "dns": a.ts.DNS,
@@ -666,6 +754,8 @@ func (a *App) settlementTransfer(transferID string) (map[string]any, string, err
 }
 
 func (a *App) issueTransfer(transferID string) (map[string]any, error) {
+	a.settleMu.Lock()
+	defer a.settleMu.Unlock()
 	t, meID, err := a.settlementTransfer(transferID)
 	if err != nil {
 		return nil, err
@@ -690,6 +780,21 @@ func (a *App) issueTransfer(transferID string) (map[string]any, error) {
 		tableName = a.table.ID()
 	}
 	a.mu.Unlock()
+	a.mu.Lock()
+	gateway := a.profile.GatewayURL
+	if gateway == "" {
+		if g, _ := t["gatewayUrl"].(string); g != "" {
+			gateway = g
+		}
+	}
+	a.mu.Unlock()
+	if gateway == "" {
+		var gerr error
+		gateway, gerr = a.ensureGatewayURL()
+		if gerr != nil {
+			return nil, fmt.Errorf("共享网关失败：%w", gerr)
+		}
+	}
 	key, err := a.ensureBank()
 	if err != nil {
 		return nil, err
@@ -700,12 +805,6 @@ func (a *App) issueTransfer(transferID string) (map[string]any, error) {
 	}
 	a.mu.Lock()
 	mode := a.mode
-	gateway := a.profile.GatewayURL
-	if gateway == "" {
-		if g, _ := t["gatewayUrl"].(string); g != "" {
-			gateway = g
-		}
-	}
 	table := a.table
 	host := a.host
 	cl := a.peer
@@ -725,6 +824,8 @@ func (a *App) issueTransfer(transferID string) (map[string]any, error) {
 }
 
 func (a *App) verifyTransfer(transferID string) (map[string]any, error) {
+	a.settleMu.Lock()
+	defer a.settleMu.Unlock()
 	t, meID, err := a.settlementTransfer(transferID)
 	if err != nil {
 		return nil, err

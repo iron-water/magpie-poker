@@ -40,6 +40,7 @@ type Server struct {
 	identity netx.Identity
 	secret   string
 	port     int
+	grace    time.Duration
 	onChange func()
 	logf     func(string, ...any)
 
@@ -48,6 +49,7 @@ type Server struct {
 	seen         map[string]struct{}
 	seenQueue    []string
 	joinAttempts map[string]*rateAttempt
+	joinSeen     map[string]time.Time
 	closeTimers  map[string]*time.Timer
 	closed       bool
 	listener     net.Listener
@@ -72,41 +74,78 @@ type rateAttempt struct {
 }
 
 type sseStream struct {
-	mu      sync.Mutex
-	w       http.ResponseWriter
-	flusher http.Flusher
-	closed  bool
-	done    chan struct{}
-	once    sync.Once
+	w          http.ResponseWriter
+	flusher    http.Flusher
+	done       chan struct{}
+	writerDone chan struct{}
+	once       sync.Once
+	out        chan []byte
 }
 
 func newSSEStream(w http.ResponseWriter) *sseStream {
 	flusher, _ := w.(http.Flusher)
-	return &sseStream{w: w, flusher: flusher, done: make(chan struct{})}
+	st := &sseStream{
+		w:          w,
+		flusher:    flusher,
+		done:       make(chan struct{}),
+		writerDone: make(chan struct{}),
+		out:        make(chan []byte, 8),
+	}
+	go st.loop()
+	return st
+}
+
+// loop is the only goroutine that touches the response writer. A slow client
+// fills out, gets stopped, and can never block Broadcast or the host ticker.
+func (st *sseStream) loop() {
+	defer close(st.writerDone)
+	for {
+		select {
+		case <-st.done:
+			return
+		case payload := <-st.out:
+			select {
+			case <-st.done:
+				return
+			default:
+			}
+			if rc := http.NewResponseController(st.w); rc != nil {
+				_ = rc.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			}
+			if _, err := st.w.Write(payload); err != nil {
+				st.stop()
+				return
+			}
+			if st.flusher != nil {
+				st.flusher.Flush()
+			}
+		}
+	}
 }
 
 func (st *sseStream) write(payload []byte) error {
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if st.closed {
+	select {
+	case <-st.done:
 		return errors.New("stream closed")
+	default:
 	}
-	if _, err := st.w.Write(payload); err != nil {
-		return err
+	select {
+	case st.out <- payload:
+		return nil
+	case <-st.done:
+		return errors.New("stream closed")
+	default:
+		st.stop()
+		return errors.New("stream too slow")
 	}
-	if st.flusher != nil {
-		st.flusher.Flush()
-	}
-	return nil
 }
 
 func (st *sseStream) stop() {
-	st.once.Do(func() {
-		st.mu.Lock()
-		st.closed = true
-		st.mu.Unlock()
-		close(st.done)
-	})
+	st.once.Do(func() { close(st.done) })
+}
+
+func (st *sseStream) wait() {
+	<-st.writerDone
 }
 
 // New wires a table server. port 0 asks Listen for an ephemeral port;
@@ -126,11 +165,13 @@ func New(table *game.Table, identity netx.Identity, secret string, port int, onC
 		identity:     identity,
 		secret:       secret,
 		port:         port,
+		grace:        disconnectGrace,
 		onChange:     onChange,
 		logf:         logf,
 		sessions:     make(map[string]*session),
 		seen:         make(map[string]struct{}),
 		joinAttempts: make(map[string]*rateAttempt),
+		joinSeen:     make(map[string]time.Time),
 		closeTimers:  make(map[string]*time.Timer),
 		stop:         make(chan struct{}),
 	}
@@ -170,7 +211,13 @@ func (s *Server) Listen() (int, error) {
 	}
 	s.listener = listener
 	s.boundPort = listener.Addr().(*net.TCPAddr).Port
-	srv := &http.Server{Handler: s, ReadHeaderTimeout: 10 * time.Second}
+	srv := &http.Server{
+		Handler:           s,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
 	s.httpServer = srv
 	port := s.boundPort
 	s.wg.Add(2)
@@ -230,12 +277,13 @@ func (s *Server) Close() error {
 		delete(s.closeTimers, id)
 	}
 	s.mu.Unlock()
-	for _, stream := range streams {
-		stream.stop()
-	}
 	var err error
 	if srv != nil {
 		err = srv.Close()
+	}
+	for _, stream := range streams {
+		stream.stop()
+		stream.wait()
 	}
 	s.wg.Wait()
 	return err
@@ -353,6 +401,11 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	ip := remoteIP(r)
 	now := time.Now()
 	s.mu.Lock()
+	for key, old := range s.joinAttempts {
+		if now.After(old.reset) {
+			delete(s.joinAttempts, key)
+		}
+	}
 	attempt := s.joinAttempts[ip]
 	if attempt == nil || now.After(attempt.reset) {
 		attempt = &rateAttempt{reset: now.Add(joinWindow)}
@@ -413,6 +466,22 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "bad_proof", "邀请码不匹配")
 		return
 	}
+	nonceKey := req.Pub + "|" + req.Nonce
+	s.mu.Lock()
+	if expires, seen := s.joinSeen[nonceKey]; seen && now.Before(expires) {
+		s.mu.Unlock()
+		writeError(w, http.StatusConflict, "join_replay", "入桌请求重复")
+		return
+	}
+	if len(s.joinSeen) > 1024 {
+		for key, expires := range s.joinSeen {
+			if now.After(expires) {
+				delete(s.joinSeen, key)
+			}
+		}
+	}
+	s.joinSeen[nonceKey] = now.Add(2 * joinWindow)
+	s.mu.Unlock()
 
 	id := newPlayerID()
 	for {
@@ -432,6 +501,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		Avatar:     avatar,
 		GatewayURL: gateway,
 		Tailscale:  req.Profile.Tailscale,
+		Pub:        req.Pub,
 	})
 	if err != nil {
 		message, code := gameError(err)
@@ -498,7 +568,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "no_session", "入桌已失效")
 		return
 	}
-	if err != nil || absDuration(time.Now().UnixMilli()-ts) > tsWindowMS {
+	if err != nil || !freshTimestamp(ts, time.Now().UnixMilli()) {
 		writeError(w, http.StatusForbidden, "expired", "请求已过期")
 		return
 	}
@@ -512,7 +582,14 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	wasOffline := !player.Connected
-	s.table.MarkConnected(playerID)
+
+	s.mu.Lock()
+	if current := s.sessions[playerID]; current != nil && len(current.streams) >= 4 {
+		s.mu.Unlock()
+		writeError(w, http.StatusTooManyRequests, "too_many_streams", "连接太多")
+		return
+	}
+	s.mu.Unlock()
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -536,6 +613,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	sess.streams[stream] = struct{}{}
 	s.mu.Unlock()
+	s.table.MarkConnected(playerID)
 
 	if view, err := json.Marshal(s.table.ViewFor(playerID, time.Now())); err == nil {
 		stream.write(stateFrame(view))
@@ -566,6 +644,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) cleanupStream(playerID string, sess *session, stream *sseStream) {
 	stream.stop()
+	stream.wait()
 	s.mu.Lock()
 	current := s.sessions[playerID]
 	if current == sess {
@@ -574,7 +653,7 @@ func (s *Server) cleanupStream(playerID string, sess *session, stream *sseStream
 			if timer := s.closeTimers[playerID]; timer != nil {
 				timer.Stop()
 			}
-			s.closeTimers[playerID] = time.AfterFunc(disconnectGrace, func() {
+			s.closeTimers[playerID] = time.AfterFunc(s.grace, func() {
 				s.disconnect(playerID, sess)
 			})
 		}
@@ -586,11 +665,14 @@ func (s *Server) disconnect(playerID string, sess *session) {
 	s.mu.Lock()
 	delete(s.closeTimers, playerID)
 	active := !s.closed && s.sessions[playerID] == sess && len(sess.streams) == 0
-	s.mu.Unlock()
 	if !active {
+		s.mu.Unlock()
 		return
 	}
+	// Mark under s.mu so a stream cannot register between the check and the
+	// disconnect (which would leave the fresh stream marked offline).
 	s.table.MarkDisconnected(playerID)
+	s.mu.Unlock()
 	s.markChanged()
 	s.Broadcast()
 }
@@ -717,7 +799,7 @@ func (s *Server) authenticate(r *http.Request, path, body string) (string, *auth
 	if sess == nil {
 		return "", &authError{http.StatusForbidden, "no_session", "入桌已失效"}
 	}
-	if err != nil || absDuration(time.Now().UnixMilli()-ts) > tsWindowMS {
+	if err != nil || !freshTimestamp(ts, time.Now().UnixMilli()) {
 		return "", &authError{http.StatusForbidden, "expired", "请求已过期"}
 	}
 	if !netx.VerifyRequest(sess.key, r.Method, path, ts, body, sig) {
@@ -854,9 +936,6 @@ func asText(value any) string {
 	}
 }
 
-func absDuration(ms int64) int64 {
-	if ms < 0 {
-		return -ms
-	}
-	return ms
+func freshTimestamp(ts, now int64) bool {
+	return ts >= now-tsWindowMS && ts <= now+tsWindowMS
 }

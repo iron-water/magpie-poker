@@ -19,7 +19,7 @@
         </div>
       </div>
 
-      <div class="top-meta" id="top-table" aria-live="polite"></div>
+      <div class="top-meta" id="top-table"></div>
 
       <div class="top-actions">
         <div class="conn" id="conn" data-state="connecting" title="本机牌局服务连接状态">
@@ -41,20 +41,20 @@
       <section class="view lounge-view" id="lounge-view">
         <div class="lounge-wrap">
           <div class="lounge-hero">
-            <p class="eyebrow">PRIVATE TABLE · 私密牌局</p>
-            <h1 class="hero-title">今夜，<em>牌桌见</em>。</h1>
-            <p class="hero-copy">
-              一桌老友，一副牌，一串邀请码。牌局跑在这台机器上，跨过 Tailscale 直连，
-              筹码用 magpie gateway key 结清。
-            </p>
-            <div class="hero-decor" aria-hidden="true">
-              <span class="chip chip-red"></span>
-              <span class="chip chip-gold"></span>
-              <span class="chip chip-blue"></span>
-              <span class="chip chip-dark"></span>
-              <span class="hero-suit">♠</span>
+            <div class="hero-sign">
+              <p class="eyebrow">PRIVATE TABLE · 私密牌局</p>
+              <h1 class="hero-title">今夜，<em>牌桌见</em>。</h1>
+              <div class="hero-decor" aria-hidden="true">
+                <span class="chip chip-red"></span>
+                <span class="chip chip-gold"></span>
+                <span class="chip chip-blue"></span>
+                <span class="chip chip-dark"></span>
+                <span class="hero-suit">♠</span>
+              </div>
+              <div class="hero-cards" aria-hidden="true">
+                <span></span><span></span><span></span>
+              </div>
             </div>
-            <div class="host-strip" id="lounge-host-info"></div>
           </div>
 
           <div class="lounge-grid">
@@ -200,7 +200,7 @@
             </div>
             <div class="board" id="board" aria-label="公共牌"></div>
             <div class="center-meta" id="hand-meta"></div>
-            <div class="turn-hint" id="turn-hint" aria-live="polite"></div>
+            <div class="turn-hint" id="turn-hint"></div>
           </div>
 
           <div class="seats" id="seats"></div>
@@ -231,10 +231,6 @@
           <div class="settle-summary" id="settle-summary"></div>
           <div class="settle-grid" id="settle-cards"></div>
 
-          <p class="settle-foot">
-            每位对手一张卡。欠款方在本机签发 magpie gateway key，收款方验证后即视为结清；
-            key 只显示给收款人，请勿转发。
-          </p>
         </div>
       </section>
     </main>
@@ -256,7 +252,7 @@
         <button class="btn btn-outline btn-sm mt" type="button" id="copy-code">复制邀请码</button>
       </div>
       <div class="field">
-        <label for="invite-direct">直连地址</label>
+        <label for="invite-direct">直连地址（调试用，不是页面）</label>
         <div class="input-row">
           <input class="input" id="invite-direct" readonly spellcheck="false">
           <button class="btn btn-outline btn-sm" type="button" id="copy-direct">复制</button>
@@ -265,7 +261,7 @@
       <div class="notice-box">
         <span class="notice-icon" aria-hidden="true">♠</span>
         <div>
-          <p>把邀请码发给朋友，或让他们打开直连地址。双方都需要在同一个 Tailscale 网络里。</p>
+          <p>把邀请码发给朋友，让他们在「入一桌」粘贴。双方都需要在同一个 Tailscale 网络里。</p>
           <p class="muted" id="invite-served"></p>
         </div>
       </div>

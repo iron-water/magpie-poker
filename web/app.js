@@ -88,6 +88,13 @@ async function boot() {
       if (params.get("seats") === "9" && state.table) {
         state.table.config.maxSeats = 9;
       }
+      if (params.get("settle") === "1" && state.table) {
+        state.table.phase = "ended";
+        state.table.toAct = null;
+        state.table.deadline = null;
+        state.table.me.legal = null;
+        state.table.settlement = structuredClone(mod.demoSettlement);
+      }
       resetDemoDeadline(state.table);
       selectedAvatar = avatarOf(state.profile?.avatar);
       setConnection("demo", "演示模式");
@@ -155,6 +162,12 @@ function applyState(next) {
   const previousTable = state?.table;
   state = next;
   awaitingState = false;
+  if (state.mode === "guest" && state.connection) {
+    const status = String(state.connection.status || "");
+    if (status === "online") setConnection("open", "已连接主机");
+    else if (status === "connecting") setConnection("connecting", "连接主机中");
+    else if (status === "offline" || status === "closed") setConnection("error", "主机已断开");
+  }
   if (state.profile && !avatarTouched) selectedAvatar = avatarOf(state.profile.avatar);
   if (!state.table) {
     view = "lounge";
@@ -186,6 +199,7 @@ function render() {
     if (view === "settlement") renderSettlement();
   }
   if ($("#modal-log")?.open) renderLogs();
+  if ($("#modal-invite")?.open && table?.invite) showInvite(table.invite);
   applyPending();
   updateClock();
 }
@@ -204,11 +218,8 @@ function renderTopbar() {
     const maxSeats = Number(table.config?.maxSeats) || players;
     parts.push(`<span class="meta-pill">${players}${maxSeats > players ? ` / ${maxSeats}` : ""} 人</span>`);
     if (DEMO) parts.push(`<span class="meta-pill">演示</span>`);
-  } else {
-    parts.push(`<span class="meta-strong">德州扑克</span>`);
-    parts.push(`<span class="meta-sep">·</span>`);
-    parts.push(`<span>本机私密牌局</span>`);
-    if (DEMO) parts.push(`<span class="meta-pill">演示</span>`);
+  } else if (DEMO) {
+    parts.push(`<span class="meta-pill">演示</span>`);
   }
   meta.innerHTML = parts.join("");
 
@@ -217,7 +228,7 @@ function renderTopbar() {
   $("#btn-log").hidden = !hasTable;
   $("#btn-leave").hidden = !hasTable;
   $("#btn-settlement").hidden = !table?.settlement;
-  $("#btn-end").hidden = !(table && state?.me?.isHost && table.phase !== "ended");
+  $("#btn-end").hidden = !(table && state?.me?.isHost && table.phase !== "ended" && table.phase !== "hand");
 
   document.title = table ? `${table.name || "牌桌"} · 德州扑克` : "德州扑克 · 牌桌";
 }
@@ -233,28 +244,6 @@ function renderLounge() {
   }
   updateUnitHint();
   applyAvatarSelection();
-
-  const info = $("#lounge-host-info");
-  const host = state?.host;
-  const keys = state?.keys;
-  const pieces = [];
-  if (host) {
-    pieces.push(
-      `<span class="host-piece"><span class="${host.tailscale ? "dot-ok" : "dot-warn"}"></span>` +
-        `Tailscale <strong>${host.tailscale ? "已连接" : "未连接"}</strong></span>`,
-    );
-    if (host.name) pieces.push(`<span class="host-piece">主机 <strong>${esc(host.name)}</strong></span>`);
-    if (host.ip) pieces.push(`<span class="host-piece">IP <strong>${esc(host.ip)}</strong></span>`);
-    if (host.dns) pieces.push(`<span class="host-piece">DNS <strong>${esc(host.dns)}</strong></span>`);
-    if (host.serve) pieces.push(`<span class="host-piece">Serve <strong>${esc(host.serve)}</strong></span>`);
-    if (host.error) pieces.push(`<span class="host-piece">Tailscale <strong>${esc(host.error)}</strong></span>`);
-  } else {
-    pieces.push(`<span class="host-piece">等待本机牌局服务…</span>`);
-  }
-  if (keys?.issuer?.name) {
-    pieces.push(`<span class="host-piece">银行 key <strong>${esc(keys.issuer.name)}</strong></span>`);
-  }
-  info.innerHTML = pieces.join("");
 }
 
 function renderTable() {
@@ -436,7 +425,7 @@ function renderActionBar(table, myId) {
   const mySeat = table.seats?.find((seat) => seat.id === myId || seat.isMe);
   const legal = table.me?.legal;
   const myTurn = table.phase === "hand" && Boolean(legal) && table.toAct === myId;
-  const canAct = myTurn && !mySeat?.folded && !mySeat?.out && !mySeat?.allIn;
+  const canAct = myTurn && !peerDown() && !mySeat?.folded && !mySeat?.out && !mySeat?.allIn;
 
   if (canAct) {
     renderActiveBar(bar, table, mySeat, legal);
@@ -447,6 +436,8 @@ function renderActionBar(table, myId) {
 }
 
 function renderActiveBar(bar, table, mySeat, legal) {
+  const priorRaise = Number($("#raise-number")?.value);
+  const priorFocus = document.activeElement?.id;
   const callAmount = Math.max(0, Number(legal.call) || 0);
   const bounds = raiseBounds(table, legal, mySeat);
   const initial = bounds.hasRaise ? bounds.min : 0;
@@ -496,16 +487,35 @@ function renderActiveBar(bar, table, mySeat, legal) {
   }
 
   bindRaiseInputs(table, legal, mySeat);
+  if (bounds.hasRaise && Number.isFinite(priorRaise) && priorRaise > 0) {
+    const value = clampInt(priorRaise, bounds.min, bounds.max);
+    const slider = $("#raise-slider");
+    const number = $("#raise-number");
+    if (slider && number) {
+      slider.value = String(value);
+      number.value = String(value);
+      const submit = $("#raise-submit");
+      if (submit) submit.textContent = raiseButtonText(bounds, value);
+    }
+    if (priorFocus === "raise-slider" || priorFocus === "raise-number") {
+      $(`#${priorFocus}`)?.focus();
+    }
+  }
 }
 
 function renderWaitingBar(bar, table, myId, mySeat) {
+  const priorRebuy = Number($("#rebuy-amount")?.value);
+  const priorRebuyFocus = document.activeElement?.id;
   const player = table.seats?.find((seat) => seat.id === table.toAct);
   const seconds = player ? secondsLeft(table, player) : 0;
   const isHost = Boolean(state.me?.isHost);
   let title = "";
   let sub = "";
 
-  if (table.phase === "lobby") {
+  if (peerDown()) {
+    title = "主机已断开";
+    sub = "正在尝试重连；也可以离桌后重新加入。";
+  } else if (table.phase === "lobby") {
     title = isHost ? "牌桌已就绪" : "等待房主开局";
     sub = "把邀请码发给朋友，人齐就能开始。";
   } else if (table.phase === "showdown") {
@@ -546,7 +556,7 @@ function renderWaitingBar(bar, table, myId, mySeat) {
         `<button class="btn btn-primary btn-sm" type="button" data-host="next" data-pending-key="next">下一手</button>`,
       );
     }
-    if (table.phase !== "ended") {
+    if (table.phase !== "ended" && table.phase !== "hand") {
       hostButtons.push(
         `<button class="btn btn-ghost btn-sm" type="button" data-host="end" data-pending-key="end">结束牌局</button>`,
       );
@@ -567,11 +577,12 @@ function renderWaitingBar(bar, table, myId, mySeat) {
     `<button class="btn btn-ghost btn-sm rebuy-toggle" type="button" id="rebuy-toggle"${rebuyDisabled}>补码</button>` +
     (rebuyOpen && table.phase !== "hand"
       ? `<form class="rebuy-form" id="rebuy-form">` +
-        `<input class="input" id="rebuy-amount" type="number" min="1" step="1" value="${rebuyValue}" inputmode="numeric" aria-label="补码筹码">` +
+        `<input class="input" id="rebuy-amount" type="number" min="1" step="1" value="${Number.isFinite(priorRebuy) && priorRebuy > 0 ? priorRebuy : rebuyValue}" inputmode="numeric" aria-label="补码筹码">` +
         `<button class="btn btn-primary btn-sm" type="submit" data-pending-key="rebuy">加入</button>` +
         `</form>`
       : "") +
     `</div>`;
+  if (priorRebuyFocus === "rebuy-amount") $("#rebuy-amount")?.focus();
 }
 
 /* ============================== actions ============================== */
@@ -579,6 +590,10 @@ function renderWaitingBar(bar, table, myId, mySeat) {
 async function sendAction(type, amount) {
   const table = state?.table;
   if (!table || table.phase !== "hand" || !table.me?.legal) return;
+  if (peerDown()) {
+    toast("主机连接已断开", "error");
+    return;
+  }
   if (pending.has("action") || awaitingState) return;
   pending.add("action");
   if (!DEMO) awaitingState = true;
@@ -851,6 +866,7 @@ async function verifyTransfer(id) {
 }
 
 async function bulkIssue() {
+  if (pending.has("settle-issue-all") || [...pending].some((key) => key.startsWith("settle:"))) return;
   const transfers = state?.table?.settlement?.transfers || [];
   const myId = state?.me?.id;
   const ids = transfers
@@ -870,6 +886,7 @@ async function bulkIssue() {
 }
 
 async function bulkVerify() {
+  if (pending.has("settle-verify-all") || [...pending].some((key) => key.startsWith("settle:"))) return;
   const transfers = state?.table?.settlement?.transfers || [];
   const myId = state?.me?.id;
   const ids = transfers
@@ -936,6 +953,10 @@ async function nextHand() {
 async function endTable() {
   const table = state?.table;
   if (!table) return;
+  if (table.phase === "hand") {
+    toast("先打完这一手再结束", "warn");
+    return;
+  }
   if (!(await askConfirm("结束牌局并进入结算？", "结束牌局"))) return;
   const result = await post("/api/table/end", {}, "end");
   if (result.ok) toast("正在生成结算…", "info");
@@ -1260,8 +1281,8 @@ function showInvite(invite) {
     return;
   }
   lastInvite = value;
-  $("#invite-code").value = value.code || "";
-  const direct = value.direct || value.served || "";
+  $("#invite-code").value = value.servedCode || value.code || "";
+  const direct = value.served || value.direct || "";
   $("#invite-direct").value = direct;
   $("#invite-served").textContent = value.served ? `Serve：${value.served}` : "";
   const dialog = $("#modal-invite");
@@ -1578,9 +1599,11 @@ function updateClock() {
 /* ============================== pending / view ============================== */
 
 function applyPending() {
+  const settleBusy = [...pending].some((key) => key.startsWith("settle"));
   for (const button of $$("[data-pending-key]")) {
     const key = button.dataset.pendingKey;
-    const busy = pending.has(key) || (key === "action" && awaitingState);
+    const busy = pending.has(key) || (key === "action" && awaitingState) ||
+      (key.startsWith("settle") && settleBusy);
     const locked = button.dataset.locked === "1";
     button.disabled = busy || locked;
     button.classList.toggle("is-busy", busy);
@@ -1605,6 +1628,7 @@ async function request(path, body) {
   };
   if (body !== undefined) {
     options.headers["content-type"] = "application/json";
+    options.headers["x-poker-local"] = "1";
     options.body = JSON.stringify(body);
   }
   const response = await fetch(path, options);
@@ -2077,6 +2101,10 @@ function resetDemoDeadline(table) {
 }
 
 /* ============================== helpers ============================== */
+
+function peerDown() {
+  return state?.mode === "guest" && ["offline", "closed"].includes(String(state?.connection?.status || ""));
+}
 
 function setConnection(kind, text) {
   const box = $("#conn");

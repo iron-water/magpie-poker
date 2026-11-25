@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -124,16 +125,28 @@ type Client struct {
 	wg      sync.WaitGroup
 }
 
-// New creates a client for invite. No network activity happens until Connect.
+// New creates a client for invite with a fresh identity. No network activity
+// happens until Connect.
 func New(invite netx.Invite, profile Profile, onState func(json.RawMessage), onNotice func(level, text string), onStatus func(string)) *Client {
 	identity, err := netx.GenerateIdentity()
+	return newClient(invite, identity, err, profile, onState, onNotice, onStatus)
+}
+
+// NewWithIdentity creates a client with a stable identity, so a guest can
+// reclaim its seat by name after an app restart.
+func NewWithIdentity(invite netx.Invite, identity netx.Identity, profile Profile, onState func(json.RawMessage), onNotice func(level, text string), onStatus func(string)) *Client {
+	err := netx.ValidateIdentity(identity)
+	return newClient(invite, identity, err, profile, onState, onNotice, onStatus)
+}
+
+func newClient(invite netx.Invite, identity netx.Identity, initErr error, profile Profile, onState func(json.RawMessage), onNotice func(level, text string), onStatus func(string)) *Client {
 	c := &Client{
 		Seat:     -1,
 		Status:   "offline",
 		invite:   invite,
 		profile:  profile,
 		identity: identity,
-		initErr:  err,
+		initErr:  initErr,
 		onState:  onState,
 		onNotice: onNotice,
 		onStatus: onStatus,
@@ -146,20 +159,25 @@ func New(invite netx.Invite, profile Profile, onState func(json.RawMessage), onN
 // Pub returns this client's X25519 public key.
 func (c *Client) Pub() string { return c.identity.Pub }
 
+// StatusText is the stream status read under the client mutex.
+func (c *Client) StatusText() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.Status
+}
+
 func originOf(invite netx.Invite) string {
 	host := strings.TrimSpace(invite.Host)
+	host = strings.TrimPrefix(host, "[")
+	host = strings.TrimSuffix(host, "]")
 	if host == "" {
 		return ""
-	}
-	shown := host
-	if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
-		shown = "[" + host + "]"
 	}
 	scheme := "http"
 	if invite.TLS {
 		scheme = "https"
 	}
-	return fmt.Sprintf("%s://%s:%d", scheme, shown, invite.Port)
+	return fmt.Sprintf("%s://%s", scheme, net.JoinHostPort(host, fmt.Sprint(invite.Port)))
 }
 
 // Connect performs the join handshake. It is idempotent while online.
@@ -242,7 +260,18 @@ func (c *Client) Connect() error {
 		c.setStatus("offline")
 		return &Error{Message: "牌桌不匹配", Code: "wrong_table", Status: resp.StatusCode}
 	}
-	session, err := netx.DeriveSession(identity.Priv, joined.HostPub, invite.Secret, invite.TableID, playerID)
+	pinnedPub, err := netx.PublicKey(invite.HostPub)
+	if err != nil {
+		c.setStatus("offline")
+		return &Error{Message: "邀请缺少合法的主机公钥", Code: "bad_invite"}
+	}
+	joinedPub, err := netx.PublicKey(joined.HostPub)
+	if err != nil || !netx.SafeEqual(string(joinedPub.Bytes()), string(pinnedPub.Bytes())) {
+		c.setStatus("offline")
+		return &Error{Message: "主机身份与邀请码不符", Code: "bad_host_key", Status: resp.StatusCode}
+	}
+	// Derive from the pinned key, never from the key the remote chose to send.
+	session, err := netx.DeriveSession(identity.Priv, invite.HostPub, invite.Secret, invite.TableID, playerID)
 	if err != nil {
 		c.setStatus("offline")
 		return &Error{Message: "主机公钥无效", Code: "bad_host_key", Status: resp.StatusCode}
@@ -422,8 +451,12 @@ func (c *Client) runStream(ctx context.Context) {
 		if closed || len(session) == 0 {
 			return
 		}
-		opened := c.streamOnce(ctx, session, playerID)
+		opened, terminal := c.streamOnce(ctx, session, playerID)
 		if ctx.Err() != nil {
+			return
+		}
+		if terminal {
+			c.setStatus("closed")
 			return
 		}
 		if opened {
@@ -449,8 +482,9 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 	}
 }
 
-// streamOnce opens one SSE connection; it returns true if the stream opened.
-func (c *Client) streamOnce(ctx context.Context, session []byte, playerID string) bool {
+// streamOnce opens one SSE connection. terminal is true when the host says
+// the session is gone (left/ended), so retrying forever is pointless.
+func (c *Client) streamOnce(ctx context.Context, session []byte, playerID string) (opened, terminal bool) {
 	ts := time.Now().UnixMilli()
 	sig := netx.SignRequest(session, http.MethodGet, eventsPath, ts, "")
 	query := url.Values{}
@@ -459,17 +493,21 @@ func (c *Client) streamOnce(ctx context.Context, session []byte, playerID string
 	query.Set("sig", sig)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+eventsPath+"?"+query.Encode(), nil)
 	if err != nil {
-		return false
+		return false, false
 	}
 	req.Header.Set("Accept", "text/event-stream")
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return false
+		return false, false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
-		return false
+		switch resp.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden, http.StatusGone:
+			return false, true
+		}
+		return false, false
 	}
 	c.setStatus("online")
 	parser := sseParser{client: c}
@@ -479,12 +517,12 @@ func (c *Client) streamOnce(ctx context.Context, session []byte, playerID string
 		line := scanner.Text()
 		if ctx.Err() != nil {
 			parser.dispatch()
-			return true
+			return true, false
 		}
 		parser.line(line)
 	}
 	parser.dispatch()
-	return true
+	return true, false
 }
 
 type sseParser struct {

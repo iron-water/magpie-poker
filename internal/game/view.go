@@ -262,7 +262,14 @@ func (t *Table) viewForLocked(viewerID string, nowMS int64) View {
 		for _, p := range built.Pots {
 			pots = append(pots, PotView{Amount: p.Amount, Eligible: stringsJSON(p.Eligible)})
 		}
-		pot = built.Total
+		// The live pot is every committed chip, including antes and a bet the
+		// table has not called yet. ComputePots' top-vs-second refund is only
+		// for awarding; using it here understates the pot during betting.
+		for _, p := range t.players {
+			if containsID(t.handPlayers, p.ID) {
+				pot += p.Committed
+			}
+		}
 	} else if t.showdown != nil {
 		for _, x := range t.showdown.Pots {
 			pots = append(pots, PotView{Amount: x.Amount, Eligible: x.Winners, Winners: x.Winners})

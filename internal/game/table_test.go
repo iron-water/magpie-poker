@@ -63,7 +63,7 @@ func TestStartHandViewParityWithJS(t *testing.T) {
 		t.Fatal(err)
 	}
 	v := table.ViewFor("p0", time.Now())
-	if v.HandNo != 1 || v.Phase != "hand" || v.CurrentBet != 20 || v.MinRaiseTo != 40 || v.Pot != 20 {
+	if v.HandNo != 1 || v.Phase != "hand" || v.CurrentBet != 20 || v.MinRaiseTo != 40 || v.Pot != 30 {
 		t.Fatalf("view header %+v", v)
 	}
 	if len(v.Pots) != 1 || v.Pots[0].Amount != 20 {
@@ -100,17 +100,17 @@ func TestAnteIsPostedBeforeBlinds(t *testing.T) {
 	if err := table.StartHand(testSeed); err != nil {
 		t.Fatal(err)
 	}
-	if p := mustPlayer(t, table, "p0"); p.Committed != 15 || p.Bet != 15 {
+	if p := mustPlayer(t, table, "p0"); p.Committed != 15 || p.Bet != 10 {
 		t.Fatalf("p0 committed %d bet %d", p.Committed, p.Bet)
 	}
-	if p := mustPlayer(t, table, "p1"); p.Committed != 25 || p.Bet != 25 {
+	if p := mustPlayer(t, table, "p1"); p.Committed != 25 || p.Bet != 20 {
 		t.Fatalf("p1 committed %d bet %d", p.Committed, p.Bet)
 	}
 	if table.currentBet != 20 {
 		t.Fatalf("currentBet %d", table.currentBet)
 	}
 	v := table.ViewFor("p0", time.Now())
-	if v.Pot != 30 || v.Me == nil || v.Me.Legal == nil || v.Me.Legal.Call == nil || *v.Me.Legal.Call != 5 {
+	if v.Pot != 40 || v.Me == nil || v.Me.Legal == nil || v.Me.Legal.Call == nil || *v.Me.Legal.Call != 10 {
 		t.Fatalf("pot %d legal %+v", v.Pot, v.Me)
 	}
 	if err := table.Act("p0", Action{Type: "call"}); err != nil {
@@ -119,7 +119,7 @@ func TestAnteIsPostedBeforeBlinds(t *testing.T) {
 	if err := table.Act("p1", Action{Type: "check"}); err != nil {
 		t.Fatal(err)
 	}
-	if table.street != "flop" || table.ViewFor("p0", time.Now()).Pot != 40 {
+	if table.street != "flop" || table.ViewFor("p0", time.Now()).Pot != 50 {
 		t.Fatalf("street %s pot %d", table.street, table.ViewFor("p0", time.Now()).Pot)
 	}
 }
@@ -289,7 +289,7 @@ func TestFoldWinAwardsWholePot(t *testing.T) {
 	if table.phase != "showdown" || table.showdown == nil || table.showdown.Reason != "fold" {
 		t.Fatalf("phase %s showdown %+v", table.phase, table.showdown)
 	}
-	if table.showdown.Total != 80 {
+	if table.showdown.Total != 40 {
 		t.Fatalf("total %d", table.showdown.Total)
 	}
 	if mustPlayer(t, table, "p0").Chips != 1020 || mustPlayer(t, table, "p1").Chips != 980 {
@@ -563,20 +563,20 @@ func TestMarkIssuedAndVerified(t *testing.T) {
 	if err := table.EndTable(); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.MarkIssued("x1", "p0", "0123456789abcdef", "", ""); codeOf(t, err) != "not_payer" {
+	if err := table.MarkIssued("x1", "p0", "sk-test_0123456789abcdef", "", ""); codeOf(t, err) != "not_payer" {
 		t.Fatalf("not_payer: %v", err)
 	}
 	if err := table.MarkIssued("x1", "p1", "short", "", ""); codeOf(t, err) != "bad_action" {
 		t.Fatalf("short key: %v", err)
 	}
-	if err := table.MarkIssued("x9", "p1", "0123456789abcdef", "", ""); codeOf(t, err) != "no_transfer" {
+	if err := table.MarkIssued("x9", "p1", "sk-test_0123456789abcdef", "", ""); codeOf(t, err) != "no_transfer" {
 		t.Fatalf("no_transfer: %v", err)
 	}
-	if err := table.MarkIssued("x1", "p1", "0123456789abcdef", "2026-12-01T00:00:00Z", "https://gw"); err != nil {
+	if err := table.MarkIssued("x1", "p1", "sk-test_0123456789abcdef", "2026-12-01T00:00:00Z", "https://gw"); err != nil {
 		t.Fatal(err)
 	}
 	payee := table.ViewFor("p0", time.Now())
-	if payee.Settlement == nil || payee.Settlement.Transfers[0].Key == nil || *payee.Settlement.Transfers[0].Key != "0123456789abcdef" {
+	if payee.Settlement == nil || payee.Settlement.Transfers[0].Key == nil || *payee.Settlement.Transfers[0].Key != "sk-test_0123456789abcdef" {
 		t.Fatalf("payee should see key: %+v", payee.Settlement)
 	}
 	payer := table.ViewFor("p1", time.Now())
@@ -804,7 +804,7 @@ func TestSnapshotRestoreEndedSettlement(t *testing.T) {
 	if err := table.EndTable(); err != nil {
 		t.Fatal(err)
 	}
-	if err := table.MarkIssued("x1", "p1", "0123456789abcdef", "2026-12-01T00:00:00Z", ""); err != nil {
+	if err := table.MarkIssued("x1", "p1", "sk-test_0123456789abcdef", "2026-12-01T00:00:00Z", ""); err != nil {
 		t.Fatal(err)
 	}
 	data, err := table.Snapshot()
@@ -856,14 +856,14 @@ func TestRebuyBetweenHands(t *testing.T) {
 
 func TestAddPlayerNameSuffixAndReclaim(t *testing.T) {
 	table := NewTable("t", "测试", "p0", defaultConfig(3))
-	first, err := table.AddPlayer(PlayerInput{ID: "a", Name: "Mio"})
+	first, err := table.AddPlayer(PlayerInput{ID: "a", Name: "Mio", Pub: "pub-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if first.Name != "Mio" {
 		t.Fatalf("first name %q", first.Name)
 	}
-	second, err := table.AddPlayer(PlayerInput{ID: "b", Name: "Mio"})
+	second, err := table.AddPlayer(PlayerInput{ID: "b", Name: "Mio", Pub: "pub-b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -872,7 +872,7 @@ func TestAddPlayerNameSuffixAndReclaim(t *testing.T) {
 	}
 	// Reconnecting with the stored duplicate name reclaims that seat.
 	table.MarkDisconnected("b")
-	again, err := table.AddPlayer(PlayerInput{ID: "b2", Name: "Mio 2"})
+	again, err := table.AddPlayer(PlayerInput{ID: "b2", Name: "Mio 2", Pub: "pub-b"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -881,7 +881,7 @@ func TestAddPlayerNameSuffixAndReclaim(t *testing.T) {
 	}
 	// A disconnected original name is reclaimed too.
 	table.MarkDisconnected("a")
-	back, err := table.AddPlayer(PlayerInput{ID: "a2", Name: "Mio"})
+	back, err := table.AddPlayer(PlayerInput{ID: "a2", Name: "Mio", Pub: "pub-a"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1024,4 +1024,23 @@ func TestViewForConcurrent(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+}
+
+func TestAddPlayerCannotReclaimWithAnotherPub(t *testing.T) {
+	table := NewTable("t", "测试", "p0", defaultConfig(3))
+	first, err := table.AddPlayer(PlayerInput{ID: "a", Name: "Mio", Pub: "pub-a"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	table.MarkDisconnected("a")
+	other, err := table.AddPlayer(PlayerInput{ID: "b", Name: "Mio", Pub: "pub-b"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if other.ID == first.ID || other.Name == "Mio" {
+		t.Fatalf("another key took the seat: %+v", other)
+	}
+	if first.Connected {
+		t.Fatal("original seat was marked connected")
+	}
 }

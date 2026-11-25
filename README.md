@@ -9,6 +9,8 @@
 - 牌桌服务是本机 Go 二进制（仅标准库），页面只和本机说话；牌桌流量走 Tailscale
 - 结算不碰真钱：输家本机执行 `magpie gateway-key issue`，key 自带额度与 TTL
 
+![大厅](docs/lobby.jpg)
+
 ![鎏金象牙](docs/skin-gilded.jpg)
 
 ## 快速开始
@@ -30,13 +32,14 @@ magpie plugin add github:iron-water/magpie-poker
 
 1. 填名字、盲注、带入筹码、人数、筹码单位（`cost` = 美元额度，`tokens` = 网关 token 数）、
    每筹码价格、行动秒数。
-2. 点「开桌」。右上角「邀请」给出邀请码（`POKER1.…`）。
-3. 把邀请码发到群里。其他人打开牌桌页，粘贴邀请码加入。
+2. 点「开桌」。插件会**自动**用本机 Tailscale 把牌桌挂到
+   `https://<机器名>.<tailnet>.ts.net:8443`，邀请码随之切换为 HTTPS 的 served 版本；
+   不再需要手动点「共享牌桌」或复制 Tailscale IP。Tailscale 不可用时回退到直连邀请码。
+3. 把邀请码发到群里。其他人打开牌桌页，粘贴邀请码加入；成员也不需要手动配地址。
 4. 房主点「开始」发牌。
 
-邀请码里含牌桌密钥，等于入场券：只发给这桌人。房间地址默认用本机的 Tailscale IP:3482。
-如果对方连不上（Windows 防火墙默认拦入站），用「共享牌桌」按钮跑 Tailscale Serve，
-改用 `https://<机器名>.<tailnet>.ts.net:8443` 的邀请码。
+邀请码里含牌桌密钥，等于入场券：只发给这桌人。Tailscale 账号本身仍需安装并登录一次；
+插件不能代替账号认证。若自动 Serve 失败，设置里「Serve 牌桌 :8443」仍可手动兜底。
 
 ### 结算
 
@@ -45,9 +48,9 @@ magpie plugin add github:iron-water/magpie-poker
 - 输家点「签发 key」：本机自动确保有一把 `poker-bank` issuer key，然后执行
   `magpie gateway-key issue --from <issuer> --ttl 168h --cost <金额> --json`，把签出的 key 交给牌桌。
 - 赢家点「复制」拿到 key，点「验证」用这把 key 请求输家的网关 `/v1/models`。
-- 输家需要先把自己的网关共享出去：设置里点「共享我的网关」，会跑
-  `tailscale serve --bg --https=8444 http://127.0.0.1:<网关端口>`，并把
-  `https://<机器名>.<tailnet>.ts.net:8444` 写进自己的资料。
+- 输家点「签发 key」时，插件会**自动**把自己的网关挂到
+  `https://<机器名>.<tailnet>.ts.net:8444`（如果资料里还没有网关地址），
+  签名前就把可达地址写进转账；设置里的「共享我的网关」是失败时的手动兜底。
 - 额度单位是 `cost` 时用 `--cost`（美元，按 magpie 的价格估算），`tokens` 时用 `--tokens`。
 - 低于最小结算额（默认 0.01）的转账标为 `small`，不签发。
 
@@ -113,7 +116,7 @@ internal/local/          本机 UI/API/SSE、Tailscale、结算、持久化
 internal/store/          设置、host.json、牌桌快照
 internal/magpiecli/      gateway-key / Tailscale CLI 封装
 web/                     页面（无框架、无外部资源）
-test/skins.test.mjs      两套皮肤 52 张牌面/牌背的完整性检查
+test/skins.test.mjs      两套皮肤 52 张牌面/牌背与 8 张头像的完整性检查
 docs/API.md              页面 ⇄ 本地服务契约
 docs/PROTOCOL.md         对等协议
 docs/ASSETS.md           GPT Image 素材清单
@@ -121,12 +124,15 @@ docs/ASSETS.md           GPT Image 素材清单
 
 ## 已验证
 
-- `npm test`：78 个 Go 测试（8 个包）——牌力评估（含 1 万手随机对拍）、边池、下注轮、
+- `npm test`：80 个 Go 测试（8 个包）——牌力评估（含 1 万手随机对拍）、边池、下注轮、
   单挑顺序、超时、结算守恒、X25519 握手、签名/重放、SSE 解析、房主/客户端端到端；
-  外加两套皮肤各 52 张牌面/牌背的完整性检查。
+  外加两套皮肤各 52 张牌面/牌背 + 8 张头像的完整性检查。
+- `go test -race`：game / peer / tableserver 三包通过。
 - 真机本机双进程：Go 房主 + Go 客机，经 `POKER1.` 邀请码入桌，打完整手牌，结束牌桌，
   输家签出 key，赢家用 `/v1/models` 验证通过（magpie 0.1.4759）。
-- UI：两套皮肤在 1280×800 下实际渲染；所有棋子/头像/牌面本地加载；960px 窄屏无横向溢出。
+- 自动 Tailscale：开桌自动 `tailscale serve` 到 8443，邀请码切换为 `.ts.net` HTTPS（本机实测）；
+  签发结算前自动 serve 网关到 8444（已接上，未在真实转账上重复验收）。
+- UI：两套皮肤在 1280×800、960×640、390×844 实际渲染；控制台零错误；960px 以下动作栏换行。
 
 ## License
 

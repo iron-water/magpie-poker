@@ -7,8 +7,16 @@ import { fileURLToPath } from "node:url";
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "..", "assets", "skins");
 const RANKS = "23456789TJQKA";
 const SUITS = "shdc";
+const AVATARS = ["fox", "panda", "tiger", "wolf", "owl", "octopus", "unicorn", "cat"];
 
 for (const skin of ["gilded", "saintdenis"]) {
+  test(`${skin}: eight avatar portraits`, () => {
+    for (const avatar of AVATARS) {
+      const file = join(root, skin, `avatar-${avatar}.webp`);
+      assert.ok(statSync(file).size > 1000, `${skin}/avatar-${avatar}`);
+    }
+  });
+
   test(`${skin}: 52 card faces and a back`, () => {
     const dir = join(root, skin, "cards");
     const files = readdirSync(dir).filter((f) => f.endsWith(".webp"));

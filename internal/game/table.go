@@ -3,6 +3,8 @@ package game
 import (
 	"encoding/json"
 	"fmt"
+	"math"
+	"net/url"
 	"sort"
 	"strings"
 	"sync"
@@ -36,6 +38,7 @@ type PlayerInput struct {
 	Avatar     string
 	GatewayURL string
 	Tailscale  any
+	Pub        string
 }
 
 // Player is one seat row. Only ID, Name, Avatar and Seat are published; the
@@ -49,6 +52,7 @@ type Player struct {
 	BuyIn      int    `json:"buyIn"`
 	GatewayURL string `json:"gatewayUrl"`
 	Tailscale  any    `json:"tailscale"`
+	Pub        string `json:"pub,omitempty"`
 	Connected  bool   `json:"connected"`
 	SittingOut bool   `json:"sittingOut"`
 	Out        bool   `json:"out"`
@@ -358,7 +362,16 @@ func (t *Table) AddPlayer(in PlayerInput) (*Player, error) {
 		clean = "玩家"
 	}
 	for _, p := range t.players {
+		if p.Left {
+			continue
+		}
 		if p.Name == clean && !p.Connected && p.Seat >= 0 {
+			// The seat and stack belong to the key that first joined, not to
+			// whoever first types the display name. Old snapshots without Pub
+			// are never reclaimable.
+			if p.Pub == "" || in.Pub == "" || p.Pub != in.Pub {
+				continue
+			}
 			p.Connected = true
 			p.SittingOut = false
 			if in.Avatar != "" {
@@ -415,6 +428,7 @@ func (t *Table) AddPlayer(in PlayerInput) (*Player, error) {
 		BuyIn:      t.config.StartingChips,
 		GatewayURL: in.GatewayURL,
 		Tailscale:  in.Tailscale,
+		Pub:        in.Pub,
 		Connected:  true,
 		SittingOut: t.phase == "hand",
 		Cards:      make([]int, 0),
@@ -480,6 +494,11 @@ func (t *Table) leaveLocked(playerID string) bool {
 	p.Left = true
 	p.Connected = false
 	p.SittingOut = true
+	seat := p.Seat
+	if seat >= 0 && seat < len(t.seats) {
+		t.seats[seat] = ""
+		p.Seat = -1
+	}
 	if t.phase == "hand" && !p.Folded {
 		p.Folded = true
 		p.LastAction = "离桌"
@@ -487,9 +506,8 @@ func (t *Table) leaveLocked(playerID string) bool {
 		if t.toAct != nil && *t.toAct == p.ID {
 			t.toAct = nil
 		}
-		t.progressLocked(p.Seat)
+		t.progressLocked(seat)
 	} else if t.phase == "lobby" || t.phase == "ended" {
-		t.seats[p.Seat] = ""
 		kept := t.players[:0]
 		for _, x := range t.players {
 			if x.ID != p.ID {
@@ -653,7 +671,12 @@ func (t *Table) startHandLocked(seed string) error {
 
 	if t.config.Ante > 0 {
 		for _, p := range eligible {
-			t.putInLocked(p, min(t.config.Ante, p.Chips))
+			n := min(t.config.Ante, p.Chips)
+			p.Chips -= n
+			p.Committed += n
+			if p.Chips == 0 {
+				p.AllIn = true
+			}
 		}
 	}
 	t.putInLocked(sb, min(t.config.SmallBlind, sb.Chips))
@@ -991,12 +1014,20 @@ func (t *Table) runOutLocked() {
 func (t *Table) boardText() string { return CardsText(t.board) }
 
 func (t *Table) finishByFoldLocked(winner *Player) {
-	total := 0
+	potPlayers := make([]PotPlayer, 0, len(t.handPlayers))
 	for _, p := range t.players {
 		if containsID(t.handPlayers, p.ID) {
-			total += p.Committed
+			potPlayers = append(potPlayers, PotPlayer{ID: p.ID, Committed: p.Committed, Folded: p.Folded})
 		}
 	}
+	built := ComputePots(potPlayers)
+	for _, refund := range built.Refunds {
+		if p := t.findPlayer(refund.ID); p != nil {
+			p.Chips += refund.Amount
+			p.Committed -= refund.Amount
+		}
+	}
+	total := built.Total
 	winner.Chips += total
 	winner.Won = total
 	for _, p := range t.players {
@@ -1184,7 +1215,7 @@ func (t *Table) EndTable() error {
 	}
 	rows := make([]*netRow, 0)
 	for _, p := range t.players {
-		if p.Seat >= 0 {
+		if p.Seat >= 0 || p.Left {
 			rows = append(rows, &netRow{p: p, delta: p.Chips - p.BuyIn})
 		}
 	}
@@ -1217,6 +1248,11 @@ func (t *Table) EndTable() error {
 		chips := min(w.due, l.owed)
 		if chips > 0 {
 			amount := round4(float64(chips) * t.config.ChipValue)
+			if t.config.Unit == "tokens" {
+				// Gateway key issuance takes an integer token count; record
+				// that same integer so the shown debt and issued key agree.
+				amount = math.Round(amount)
+			}
 			status := "pending"
 			if amount < t.config.MinSettlement {
 				status = "small"
@@ -1257,8 +1293,23 @@ func (t *Table) EndTable() error {
 	return nil
 }
 
+func validSettlementKey(key string) bool {
+	if len(key) < 24 || len(key) > 512 {
+		return false
+	}
+	if !strings.HasPrefix(key, "sk-") {
+		return false
+	}
+	for _, r := range key {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' || r == '.') {
+			return false
+		}
+	}
+	return true
+}
+
 func round4(n float64) float64 {
-	return float64(int64(n*10000+0.5)) / 10000
+	return math.Round(n*10000) / 10000
 }
 
 // MarkIssued records a settlement key issued by the debtor.
@@ -1272,8 +1323,22 @@ func (t *Table) MarkIssued(transferID, actorID, key, expires, gatewayURL string)
 	if tr.From != actorID {
 		return pokerError("not_payer", "只有欠款方能签发")
 	}
-	if len(key) < 16 {
+	if tr.Status != "pending" {
+		return pokerError("bad_settlement", "这笔结算已经处理过")
+	}
+	if !validSettlementKey(key) {
 		return pokerError("bad_action", "key 不合法")
+	}
+	if expires != "" {
+		if _, err := time.Parse(time.RFC3339, expires); err != nil {
+			return pokerError("bad_action", "key 有效期不合法")
+		}
+	}
+	if gatewayURL != "" {
+		u, err := url.Parse(gatewayURL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return pokerError("bad_action", "网关地址不合法")
+		}
 	}
 	tr.Key = new(key)
 	if expires != "" {
@@ -1301,6 +1366,9 @@ func (t *Table) MarkVerified(transferID, actorID string) error {
 	}
 	if tr.To != actorID {
 		return pokerError("not_payee", "只有收款方能验证")
+	}
+	if tr.Status != "issued" || tr.Key == nil || *tr.Key == "" {
+		return pokerError("bad_settlement", "对方还没有签发 key")
 	}
 	tr.Status = "verified"
 	t.touch()

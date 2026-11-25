@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -260,8 +261,17 @@ func GatewayURL() string {
 
 func VerifyKey(rawURL, key string) (bool, int, int, string) {
 	u, err := url.Parse(strings.TrimSpace(rawURL))
-	if err != nil {
+	if err != nil || u.Host == "" || u.User != nil {
 		return false, 0, 0, "网关地址不合法"
+	}
+	if u.Scheme != "https" {
+		if u.Scheme != "http" || os.Getenv("MAGPIE_POKER_ALLOW_HTTP_GATEWAY") != "1" {
+			return false, 0, 0, "网关必须使用 https"
+		}
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil &&
+		(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified()) {
+		return false, 0, 0, "网关地址指向了本机或内网"
 	}
 	u.Path = strings.TrimRight(u.Path, "/")
 	switch {
@@ -278,7 +288,12 @@ func VerifyKey(rawURL, key string) (bool, int, int, string) {
 		return false, 0, 0, err.Error()
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
-	client := &http.Client{Timeout: 8 * time.Second}
+	client := &http.Client{
+		Timeout: 8 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 	resp, err := client.Do(req)
 	if err != nil {
 		return false, 0, 0, Redact(err.Error())

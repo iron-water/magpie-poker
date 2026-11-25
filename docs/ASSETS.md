@@ -1,5 +1,9 @@
 > 实际两套皮肤已落地：`assets/skins/gilded`（ChatGPT · 鎏金象牙）与
 > `assets/skins/saintdenis`（Gemini · 圣丹尼）。本文件保留生成时的提示词与风格基准。
+>
+> 当前状态（2026-11-25）：两套皮肤都有 8 张头像
+> （fox / panda / tiger / wolf / owl / octopus / unicorn / cat），52 张牌面全部使用完整牌图；
+> 下面的 P2「13 点数 + 4 花色拼牌」是旧方案，不再使用。鎏金猫/狼已补齐。
 
 # 素材清单与确切提示词（RDR2 南部城市牌局风）
 

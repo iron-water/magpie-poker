@@ -470,3 +470,49 @@ func TestNewRejectsClosedPost(t *testing.T) {
 		t.Fatal("post without session must fail")
 	}
 }
+
+func TestJoinRejectsHostWithWrongPinnedKey(t *testing.T) {
+	host := startHost(t)
+	good := host.invite(t)
+	fake, err := netx.GenerateIdentity()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		var body struct {
+			Pub   string `json:"pub"`
+			Nonce string `json:"nonce"`
+			Proof string `json:"proof"`
+		}
+		if json.Unmarshal(raw, &body) != nil ||
+			netx.JoinProof(host.secret, host.tableID, body.Pub, body.Nonce) != body.Proof {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": "邀请校验失败"})
+			return
+		}
+		session, err := netx.DeriveSession(fake.Priv, body.Pub, host.secret, host.tableID, "p_fake")
+		if err != nil {
+			writeJSON(w, 400, map[string]any{"ok": false, "error": "bad key"})
+			return
+		}
+		writeJSON(w, 200, map[string]any{
+			"ok":        true,
+			"playerId":  "p_fake",
+			"seat":      0,
+			"hostPub":   fake.Pub,
+			"hostProof": netx.HostProof(session, "p_fake"),
+			"sessionId": "s_fake",
+		})
+	}))
+	defer server.Close()
+	good.Port = portOf(t, server.URL)
+	client := New(good, Profile{Name: "Mio"}, nil, nil, nil)
+	err = client.Connect()
+	var peerErr *Error
+	if err == nil || !asError(err, &peerErr) || peerErr.Code != "bad_host_key" {
+		t.Fatalf("wrong pinned host error = %#v", err)
+	}
+	if client.Status != "offline" || client.PlayerID != "" {
+		t.Fatalf("wrong pinned host state: status=%q player=%q", client.Status, client.PlayerID)
+	}
+}

@@ -29,7 +29,13 @@ func (a *App) ListenAndServe() error {
 		return err
 	}
 	a.opts.Port = ln.Addr().(*net.TCPAddr).Port
-	srv := &http.Server{Handler: http.HandlerFunc(a.handle)}
+	srv := &http.Server{
+		Handler:           http.HandlerFunc(a.handle),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    16 << 10,
+	}
 	a.mu.Lock()
 	a.server = srv
 	a.mu.Unlock()
@@ -57,7 +63,43 @@ func (a *App) Close() error {
 	return nil
 }
 
+// localRequestOK binds the local control surface to loopback and to this
+// origin. Host validation defeats DNS rebinding; the custom header defeats
+// cross-site forms and simple fetches (a cross-site custom header needs a
+// preflight that this server never grants).
+func (a *App) localRequestOK(w http.ResponseWriter, r *http.Request) bool {
+	host, port, err := net.SplitHostPort(r.Host)
+	if err != nil || port != fmt.Sprint(a.opts.Port) {
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "local host required"})
+		return false
+	}
+	switch strings.ToLower(host) {
+	case "127.0.0.1", "localhost", "::1":
+	default:
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "local host required"})
+		return false
+	}
+	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "cross-site request refused"})
+		return false
+	}
+	if r.Method == http.MethodPost {
+		if r.Header.Get("X-Poker-Local") != "1" {
+			writeJSON(w, 403, map[string]any{"ok": false, "error": "local request required"})
+			return false
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
+			writeJSON(w, 403, map[string]any{"ok": false, "error": "origin refused"})
+			return false
+		}
+	}
+	return true
+}
+
 func (a *App) handle(w http.ResponseWriter, r *http.Request) {
+	if !a.localRequestOK(w, r) {
+		return
+	}
 	p := r.URL.Path
 	if p == "/api/state" && r.Method == http.MethodGet {
 		writeJSON(w, 200, a.state())
@@ -80,10 +122,6 @@ func (a *App) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if strings.HasPrefix(p, "/api/") && r.Method == http.MethodPost {
-		if r.Header.Get("Sec-Fetch-Site") == "cross-site" {
-			writeJSON(w, 403, map[string]any{"ok": false, "error": "cross-site request refused"})
-			return
-		}
 		a.post(w, r, p)
 		return
 	}
@@ -224,15 +262,18 @@ func (a *App) post(w http.ResponseWriter, r *http.Request, path string) {
 			ID string `json:"id"`
 		}
 		_ = json.Unmarshal(body, &b)
+		a.settleMu.Lock()
 		key, err := magpiecli.EnsureBank(b.ID)
+		a.settleMu.Unlock()
 		if err != nil {
 			writeJSON(w, 400, map[string]any{"ok": false, "error": err.Error()})
 			return
 		}
+		bank := &store.Bank{ID: key.ID, Name: key.Name}
 		a.mu.Lock()
-		a.bank = &store.Bank{ID: key.ID, Name: key.Name}
+		a.bank = bank
 		a.mu.Unlock()
-		_ = a.store.SaveBank(a.bank)
+		_ = a.store.SaveBank(bank)
 		a.refreshKeys()
 		a.push()
 		writeJSON(w, 200, map[string]any{"ok": true, "bank": key})
@@ -251,6 +292,8 @@ func (a *App) post(w http.ResponseWriter, r *http.Request, path string) {
 }
 
 func (a *App) hostStart() error {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
 	a.mu.Lock()
 	mode := a.mode
 	table := a.table
@@ -329,19 +372,21 @@ func (a *App) chat(text string) error {
 }
 
 func (a *App) endTable() (any, error) {
+	a.lifecycleMu.Lock()
+	defer a.lifecycleMu.Unlock()
+	a.settleMu.Lock()
+	defer a.settleMu.Unlock()
 	a.mu.Lock()
-	mode, table := a.mode, a.table
+	mode, table, host := a.mode, a.table, a.host
 	a.mu.Unlock()
-	if mode != "host" || table == nil {
+	if mode != "host" || table == nil || host == nil {
 		return nil, errors.New("只有房主能结束牌局")
 	}
 	if err := table.EndTable(); err != nil {
 		return nil, err
 	}
 	a.onTableChange()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	view := table.ViewFor(a.host.HostPlayerID, time.Now())
+	view := table.ViewFor(host.HostPlayerID, time.Now())
 	b, _ := json.Marshal(view)
 	var m map[string]any
 	_ = json.Unmarshal(b, &m)

@@ -19,6 +19,8 @@ export const SKINS = {
       owl: `${ROOT}/gilded/avatar-owl.webp`,
       octopus: `${ROOT}/gilded/avatar-octopus.webp`,
       unicorn: `${ROOT}/gilded/avatar-unicorn.webp`,
+      cat: `${ROOT}/gilded/avatar-cat.webp`,
+      wolf: `${ROOT}/gilded/avatar-wolf.webp`,
     },
     chips: {
       25: `${ROOT}/gilded/chip-25.webp`,
