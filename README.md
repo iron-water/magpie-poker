@@ -106,7 +106,7 @@ index.mjs                magpie 插件入口（启动 Go 服务）
 cmd/magpie-poker/        CLI 与进程入口
 internal/game/           牌、牌力、边池、无限注状态机
 internal/eval/           7 张牌牌力评估
-internal/net/            邀请码、X25519、HKDF、签名、PeerClient
+internal/netx/           邀请码、X25519、HKDF、签名、PeerClient
 internal/peer/           对等会话（sign/verify/PeerClient）
 internal/tableserver/    房主对等协议服务（HTTP + SSE）
 internal/local/          本机 UI/API/SSE、Tailscale、结算、持久化

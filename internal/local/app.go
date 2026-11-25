@@ -356,6 +356,10 @@ func (a *App) leaveTable(force bool) error {
 		if svr != nil {
 			_ = svr.Close()
 		}
+		tableID := ""
+		if table != nil {
+			tableID = table.ID()
+		}
 		a.mu.Lock()
 		a.table = nil
 		a.host = nil
@@ -364,6 +368,7 @@ func (a *App) leaveTable(force bool) error {
 		a.errText = ""
 		a.mu.Unlock()
 		a.store.ClearHost()
+		a.store.ClearTable(tableID)
 		a.notify("info", "已离开牌桌")
 		return nil
 	}

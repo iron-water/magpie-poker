@@ -144,6 +144,12 @@ func (s *Store) LoadTable(id string) ([]byte, error) {
 	return os.ReadFile(s.path("table-" + id + ".json"))
 }
 
+func (s *Store) ClearTable(id string) {
+	if id != "" {
+		os.Remove(s.path("table-" + id + ".json"))
+	}
+}
+
 func (s *Store) SaveTable(id string, data []byte) error {
 	if id == "" {
 		return nil
