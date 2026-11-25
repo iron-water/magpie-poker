@@ -1,8 +1,13 @@
 # 契约：页面 ⇄ 本地服务
 
-页面（`web/index.html`）只和**本机**服务说话（同源），不直接连牌桌。本机服务在 host 模式下
-同时跑牌桌引擎，在 guest 模式下是到 host 的对等客户端。这样 magpie 页面的 CSP、以及
-每个玩家本地签发 key 都不受影响。
+页面（`web/index.html`）只和**本机**服务说话，不直接连牌桌。本机服务在 host 模式下
+同时跑牌桌引擎，在 guest 模式下是到 host 的对等客户端。这样每个玩家本地签发 key 都
+不受对等网络影响。
+
+magpie 的插件页面跑在 sandbox iframe 里，origin 是 opaque。服务在返回 `index.html` 时注入
+`<meta name="magpie-poker-token" content="…">`；页面所有 `/api/*` 请求带
+`x-poker-token`，`/api/events` 带 `?token=…`。`/api/health` 免 token，供插件探活。
+页面 CSS/JS/图片仍从 `127.0.0.1:<port>` 加载；服务对 module 资源返回 CORS。
 
 ## 1. 页面拿到的状态
 

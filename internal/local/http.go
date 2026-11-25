@@ -1,6 +1,8 @@
 package local
 
 import (
+	"bytes"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -63,10 +65,10 @@ func (a *App) Close() error {
 	return nil
 }
 
-// localRequestOK binds the local control surface to loopback and to this
-// origin. Host validation defeats DNS rebinding; the custom header defeats
-// cross-site forms and simple fetches (a cross-site custom header needs a
-// preflight that this server never grants).
+// localRequestOK binds the local control surface to loopback and to a token
+// injected into the page. The page plugin lives in a sandboxed, opaque-origin
+// iframe, so it legitimately navigates and fetches cross-site; the token, not
+// Sec-Fetch-Site, is what separates it from an arbitrary web page.
 func (a *App) localRequestOK(w http.ResponseWriter, r *http.Request) bool {
 	host, port, err := net.SplitHostPort(r.Host)
 	if err != nil || port != fmt.Sprint(a.opts.Port) {
@@ -79,19 +81,51 @@ func (a *App) localRequestOK(w http.ResponseWriter, r *http.Request) bool {
 		writeJSON(w, 403, map[string]any{"ok": false, "error": "local host required"})
 		return false
 	}
-	if site := r.Header.Get("Sec-Fetch-Site"); site != "" && site != "same-origin" && site != "none" {
-		writeJSON(w, 403, map[string]any{"ok": false, "error": "cross-site request refused"})
+	origin := r.Header.Get("Origin")
+	if !strings.HasPrefix(r.URL.Path, "/api/") {
+		// Only module sources need CORS. Do not put Access-Control-Allow-Origin
+		// on index.html: it carries the token, and a null-origin web page must
+		// not be able to read it.
+		module := strings.HasSuffix(r.URL.Path, ".js") || strings.HasSuffix(r.URL.Path, ".mjs")
+		if module && (origin == "null" || origin == "http://"+r.Host || origin == "https://"+r.Host) {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+		}
+		return true
+	}
+
+	originOK := origin == "" || origin == "null" ||
+		origin == "http://"+r.Host || origin == "https://"+r.Host
+	if originOK {
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
+		}
+		w.Header().Set("Access-Control-Allow-Headers", "content-type, x-poker-local, x-poker-token")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	}
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
 		return false
 	}
-	if r.Method == http.MethodPost {
-		if r.Header.Get("X-Poker-Local") != "1" {
-			writeJSON(w, 403, map[string]any{"ok": false, "error": "local request required"})
-			return false
-		}
-		if origin := r.Header.Get("Origin"); origin != "" && origin != "http://"+r.Host {
-			writeJSON(w, 403, map[string]any{"ok": false, "error": "origin refused"})
-			return false
-		}
+	if r.URL.Path == "/api/health" {
+		return true
+	}
+	if !originOK {
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "origin refused"})
+		return false
+	}
+	token := r.Header.Get("x-poker-token")
+	if token == "" && r.URL.Path == "/api/events" {
+		token = r.URL.Query().Get("token")
+	}
+	if len(token) != len(a.localToken) || subtle.ConstantTimeCompare([]byte(token), []byte(a.localToken)) != 1 {
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "local token required"})
+		return false
+	}
+	if r.Method == http.MethodPost && r.Header.Get("X-Poker-Local") != "1" {
+		writeJSON(w, 403, map[string]any{"ok": false, "error": "local request required"})
+		return false
 	}
 	return true
 }
@@ -465,6 +499,10 @@ func (a *App) static(w http.ResponseWriter, r *http.Request, p string) {
 		return
 	}
 	ext := strings.ToLower(filepath.Ext(file))
+	if ext == ".html" {
+		meta := []byte(fmt.Sprintf(`<meta name="magpie-poker-token" content="%s">`, a.localToken))
+		b = bytes.Replace(b, []byte("</head>"), append(meta, []byte("</head>")...), 1)
+	}
 	mime := map[string]string{
 		".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8",
 		".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -483,7 +521,7 @@ func (a *App) static(w http.ResponseWriter, r *http.Request, p string) {
 	}
 	w.Header().Set("x-content-type-options", "nosniff")
 	w.Header().Set("referrer-policy", "no-referrer")
-	w.Header().Set("content-security-policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self' data:; object-src 'none'; base-uri 'none'")
+	w.Header().Set("content-security-policy", "default-src 'self' http://127.0.0.1:* http://localhost:*; img-src 'self' http://127.0.0.1:* http://localhost:* data: blob:; style-src 'self' 'unsafe-inline' http://127.0.0.1:* http://localhost:*; script-src 'self' http://127.0.0.1:* http://localhost:*; connect-src 'self' http://127.0.0.1:* http://localhost:*; font-src 'self' http://127.0.0.1:* http://localhost:* data:; object-src 'none'; base-uri 'none'; form-action 'self'")
 	w.WriteHeader(200)
 	if r.Method != http.MethodHead {
 		_, _ = w.Write(b)

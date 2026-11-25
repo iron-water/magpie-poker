@@ -187,6 +187,18 @@ func (s *Store) SaveTable(id string, data []byte) error {
 	return s.writeAtomic("table-"+id+".json", data)
 }
 
+func (s *Store) LoadLocalToken() string {
+	b, err := os.ReadFile(s.path("local-token"))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+func (s *Store) SaveLocalToken(token string) error {
+	return s.writeAtomic("local-token", []byte(token))
+}
+
 func (s *Store) LoadBank() *Bank {
 	var b Bank
 	if readJSON(s.path("bank.json"), &b) != nil || b.ID == "" {

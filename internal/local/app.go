@@ -66,6 +66,7 @@ type App struct {
 	peer         *peer.Client
 	peerState    json.RawMessage
 	ts           magpiecli.TailscaleStatus
+	localToken   string
 	serve        any
 	keys         magpiecli.KeysState
 	bank         *store.Bank
@@ -96,12 +97,13 @@ func New(opts Options) (*App, error) {
 		return nil, err
 	}
 	a := &App{
-		opts:    opts,
-		store:   st,
-		profile: st.LoadProfile(),
-		mode:    "idle",
-		hub:     NewHub(),
-		started: time.Now(),
+		opts:       opts,
+		store:      st,
+		profile:    st.LoadProfile(),
+		mode:       "idle",
+		hub:        NewHub(),
+		started:    time.Now(),
+		localToken: randomSecret(),
 	}
 	a.bank = st.LoadBank()
 	saved := st.LoadPeerIdentity()

@@ -3,6 +3,7 @@ import { applySkin, getSkin, skinAsset, SKINS } from "./skins.js";
 
 const params = new URLSearchParams(location.search);
 const DEMO = params.get("demo") === "1";
+const LOCAL_TOKEN = document.querySelector('meta[name="magpie-poker-token"]')?.content || "";
 const AVATAR_ALIASES = {
   fox: "🦊",
   panda: "🐼",
@@ -128,7 +129,7 @@ function connectEvents() {
   if (DEMO) return;
   let events;
   try {
-    events = new EventSource("/api/events");
+    events = new EventSource(`/api/events?token=${encodeURIComponent(LOCAL_TOKEN)}`);
   } catch (error) {
     setConnection("error", "连接失败");
     return;
@@ -1002,6 +1003,24 @@ async function submitRebuy() {
 /* ============================== lounge handlers ============================== */
 
 function bindLounge() {
+  // The magpie page frame is sandbox="allow-scripts" (no allow-forms), so the
+  // browser refuses native form submission. Turn a submit-button click or an
+  // Enter press into the same submit event our handlers already listen for.
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest?.('button[type="submit"]');
+    const form = button?.form;
+    if (!form) return;
+    event.preventDefault();
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.target.matches?.("textarea")) return;
+    const form = event.target.closest?.("form");
+    if (!form || !form.querySelector('button[type="submit"]')) return;
+    event.preventDefault();
+    form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+  }, true);
+
   $("#host-form").addEventListener("submit", onHostSubmit);
   $("#host-form").addEventListener("input", updateUnitHint);
   $("#host-unit").addEventListener("change", () => {
@@ -1626,6 +1645,7 @@ async function request(path, body) {
     cache: "no-store",
     headers: { accept: "application/json" },
   };
+  if (path.startsWith("/api/")) options.headers["x-poker-token"] = LOCAL_TOKEN;
   if (body !== undefined) {
     options.headers["content-type"] = "application/json";
     options.headers["x-poker-local"] = "1";

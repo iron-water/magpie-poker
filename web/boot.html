@@ -42,44 +42,7 @@
     <h1>牌 桌</h1>
     <p id="said">正在连接本地牌桌服务<span class="dots"></span></p>
   </div>
-<script>
-(async function () {
-  var DEFAULT_PORT = 3481;
-  var port = DEFAULT_PORT;
-  var service = "";
-  var theme = "";
-  try {
-    var ready = await window.magpie?.ready;
-    if (ready && typeof ready.dark === "boolean") theme = ready.dark ? "dark" : "light";
-  } catch (e) { /* standalone page */ }
-  try {
-    var s = window.magpie?.service;
-    if (typeof s === "string" && /^https?:\/\//.test(s)) service = s;
-  } catch (e) { /* older magpie */ }
-  try {
-    var o = await window.magpie?.options?.get?.();
-    if (o && Number(o.port) > 0) port = Number(o.port);
-  } catch (e) { /* default port */ }
-
-  var q = theme ? "?theme=" + encodeURIComponent(theme) : "";
-  var target = service ? service + q : "http://127.0.0.1:" + port + "/" + q;
-
-  // WebKit reports no error when a navigation cannot be made; if this document
-  // is still here after 6s, the service did not come up.
-  setTimeout(function () {
-    var said = document.getElementById("said");
-    if (!said || document.getElementById("retry")) return;
-    said.textContent = "本地牌桌服务没有起来（127.0.0.1:" + port + "）";
-    var b = document.createElement("button");
-    b.id = "retry";
-    b.type = "button";
-    b.textContent = "重试";
-    b.addEventListener("click", function () { location.reload(); });
-    said.after(b);
-  }, 6000);
-
-  location.replace(target);
-})();
-</script>
+<script src="_magpie/bridge.js"></script>
+<script src="boot.js"></script>
 </body>
 </html>
