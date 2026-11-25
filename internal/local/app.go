@@ -47,6 +47,7 @@ type HostState struct {
 	HostPlayerID string
 	Port         int
 	ServedURL    string
+	AutoServed   bool
 }
 
 type App struct {
@@ -269,11 +270,17 @@ func (a *App) tryServeTable(tableID string, port int) {
 		return
 	}
 	a.mu.Lock()
-	if a.host == nil || a.host.TableID != tableID {
+	if a.host == nil {
+		a.mu.Unlock()
+		_ = magpiecli.DisableServe(8443)
+		return
+	}
+	if a.host.TableID != tableID {
 		a.mu.Unlock()
 		return
 	}
 	a.host.ServedURL = url
+	a.host.AutoServed = true
 	a.mu.Unlock()
 	a.persist()
 	a.push()
@@ -441,6 +448,9 @@ func (a *App) leaveTable(force bool) error {
 		}
 		if svr != nil {
 			_ = svr.Close()
+		}
+		if host != nil && host.AutoServed {
+			_ = magpiecli.DisableServe(8443)
 		}
 		tableID := ""
 		if table != nil {

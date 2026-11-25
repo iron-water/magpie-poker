@@ -546,6 +546,7 @@ func (a *App) serveTable(w http.ResponseWriter, body []byte) {
 	}
 	a.mu.Lock()
 	host.ServedURL = u
+	host.AutoServed = true
 	inv := a.inviteInfoLocked()
 	a.mu.Unlock()
 	a.persist()

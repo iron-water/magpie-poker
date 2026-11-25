@@ -114,6 +114,15 @@ func ServeStatusNow() (any, error) {
 	return v, nil
 }
 
+// DisableServe turns off the HTTPS handler this app installed.
+func DisableServe(httpsPort int) error {
+	if httpsPort <= 0 {
+		httpsPort = 8443
+	}
+	_, err := tsRun("serve", fmt.Sprintf("--https=%d", httpsPort), "off")
+	return err
+}
+
 func EnableServe(targetPort, httpsPort int) (string, error) {
 	if httpsPort <= 0 {
 		httpsPort = 8443
