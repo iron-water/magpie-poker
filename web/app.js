@@ -205,7 +205,7 @@ function renderTopbar() {
     parts.push(`<span class="meta-pill">${players}${maxSeats > players ? ` / ${maxSeats}` : ""} 人</span>`);
     if (DEMO) parts.push(`<span class="meta-pill">演示</span>`);
   } else {
-    parts.push(`<span class="meta-strong">铁水牌局</span>`);
+    parts.push(`<span class="meta-strong">德州扑克</span>`);
     parts.push(`<span class="meta-sep">·</span>`);
     parts.push(`<span>本机私密牌局</span>`);
     if (DEMO) parts.push(`<span class="meta-pill">演示</span>`);
@@ -219,7 +219,7 @@ function renderTopbar() {
   $("#btn-settlement").hidden = !table?.settlement;
   $("#btn-end").hidden = !(table && state?.me?.isHost && table.phase !== "ended");
 
-  document.title = table ? `${table.name || "牌桌"} · 铁水牌局` : "铁水牌局 · 德州扑克";
+  document.title = table ? `${table.name || "牌桌"} · 德州扑克` : "德州扑克 · 牌桌";
 }
 
 function renderLounge() {

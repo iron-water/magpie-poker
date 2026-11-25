@@ -6,7 +6,7 @@
 
 - magpie 页面插件（`magpie.page`），不需要单独装客户端
 - 房主权威的无限注德州：盲注、单挑规则、最小加注、短 all-in、边池、摊牌分池、超时自动过牌/弃牌
-- 每个玩家本地起服务，页面只和本机说话；牌桌流量走 Tailscale
+- 牌桌服务是本机 Go 二进制（仅标准库），页面只和本机说话；牌桌流量走 Tailscale
 - 结算不碰真钱：输家本机执行 `magpie gateway-key issue`，key 自带额度与 TTL
 
 ![鎏金象牙](docs/skin-gilded.jpg)
@@ -14,6 +14,7 @@
 ## 快速开始
 
 要求：magpie ≥ 0.1.1340（有 page plugin 的版本），每台机器都装了 Tailscale 并登录同一 tailnet。
+插件包自带 Windows / Linux / macOS 的 Go 服务二进制，运行时不需要 Go 或 Node。
 
 ```powershell
 magpie plugin add github:iron-water/magpie-poker
@@ -78,8 +79,22 @@ key 是 bearer：只发给对应的赢家，建议用默认的 7 天 TTL（CLI �
 ## 开发
 
 ```powershell
-npm start            # 独立起 UI 服务：http://127.0.0.1:3481
-npm test             # node --test：牌力、边池、状态机、加密、对等协议、端到端
+npm start            # go run ./cmd/magpie-poker --port 3481 --table-port 3482 --web-root .
+npm test             # go test ./...，再跑皮肤素材完整性检查
+```
+
+单独构建、运行（二进制随插件分发，用户不需要装 Go）：
+
+```powershell
+go build -trimpath -ldflags "-s -w" -o bin/magpie-poker.exe ./cmd/magpie-poker
+./bin/magpie-poker.exe --port 3481 --table-port 3482 --web-root .
+```
+
+跨平台产物：
+
+```powershell
+$env:GOOS="linux";  $env:GOARCH="amd64"; go build -trimpath -ldflags "-s -w" -o bin/magpie-poker-linux-amd64 ./cmd/magpie-poker
+$env:GOOS="darwin"; $env:GOARCH="arm64"; go build -trimpath -ldflags "-s -w" -o bin/magpie-poker-darwin-arm64 ./cmd/magpie-poker
 ```
 
 浏览器打开 `http://127.0.0.1:3481/?demo=1` 可以不连后端看牌桌和结算界面。
@@ -87,26 +102,31 @@ npm test             # node --test：牌力、边池、状态机、加密、对�
 目录：
 
 ```
-index.mjs               magpie 插件入口（server hook）
-server/local-server.mjs 本机 UI + API + SSE
-server/table-server.mjs 房主的对等协议服务
-server/poker/           牌、牌力、边池、状态机
-server/net/             邀请码、X25519、签名、PeerClient
-server/magpie/          gateway-key / Tailscale CLI
-web/                    页面（无框架、无外部资源）
-docs/API.md             页面 ⇄ 本地服务契约
-docs/PROTOCOL.md        对等协议
-docs/ASSETS.md          GPT Image 素材清单
+index.mjs                magpie 插件入口（启动 Go 服务）
+cmd/magpie-poker/        CLI 与进程入口
+internal/game/           牌、牌力、边池、无限注状态机
+internal/eval/           7 张牌牌力评估
+internal/net/            邀请码、X25519、HKDF、签名、PeerClient
+internal/peer/           对等会话（sign/verify/PeerClient）
+internal/tableserver/    房主对等协议服务（HTTP + SSE）
+internal/local/          本机 UI/API/SSE、Tailscale、结算、持久化
+internal/store/          设置、host.json、牌桌快照
+internal/magpiecli/      gateway-key / Tailscale CLI 封装
+web/                     页面（无框架、无外部资源）
+test/skins.test.mjs      两套皮肤 52 张牌面/牌背的完整性检查
+docs/API.md              页面 ⇄ 本地服务契约
+docs/PROTOCOL.md         对等协议
+docs/ASSETS.md           GPT Image 素材清单
 ```
 
 ## 已验证
 
-- `node --test`：49 个测试，牌力评估（含 1 万手随机对拍）、边池、下注轮、单挑顺序、超时、
-  结算守恒、X25519 握手、签名/重放、SSE 解析、双进程端到端（建房 → 入桌 → 发牌 →
-  行动 → 聊天 → 摊牌 → 结算），以及两套皮肤各 52 张牌面/牌背的完整性。
-- 真机：magpie 0.1.4759 的页面插件宿主、`gateway-key issue` 签发与 `/v1/models` 验证
-  （经 Tailscale IP 访问）。
-- UI：两套皮肤在 1280×800 下实际渲染，牌面 100% 加载、零控制台错误；顶部/设置都能切换。
+- `npm test`：78 个 Go 测试（8 个包）——牌力评估（含 1 万手随机对拍）、边池、下注轮、
+  单挑顺序、超时、结算守恒、X25519 握手、签名/重放、SSE 解析、房主/客户端端到端；
+  外加两套皮肤各 52 张牌面/牌背的完整性检查。
+- 真机本机双进程：Go 房主 + Go 客机，经 `POKER1.` 邀请码入桌，打完整手牌，结束牌桌，
+  输家签出 key，赢家用 `/v1/models` 验证通过（magpie 0.1.4759）。
+- UI：两套皮肤在 1280×800 下实际渲染；所有棋子/头像/牌面本地加载；960px 窄屏无横向溢出。
 
 ## License
 

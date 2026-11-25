@@ -1,17 +1,20 @@
 {
   "name": "magpie-poker",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Multiplayer Texas Hold'em inside magpie: tables over Tailscale, chips settled with magpie gateway keys.",
   "type": "module",
   "main": "./index.mjs",
   "files": [
     "index.mjs",
-    "server",
+    "bin",
     "web",
     "assets",
     "docs",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "go.mod",
+    "cmd",
+    "internal"
   ],
   "keywords": [
     "magpie",
@@ -47,7 +50,8 @@
     }
   },
   "scripts": {
-    "start": "node server/standalone.mjs",
-    "test": "node --test test/"
+    "start": "go run ./cmd/magpie-poker --port 3481 --table-port 3482 --web-root .",
+    "build": "go build -trimpath -ldflags \"-s -w\" -o bin/magpie-poker.exe ./cmd/magpie-poker",
+    "test": "go test ./... && node --test test/skins.test.mjs"
   }
 }

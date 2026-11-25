@@ -1,45 +1,130 @@
-import { startLocalServer } from "./server/local-server.mjs";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 
-let started = null;
+const root = dirname(fileURLToPath(import.meta.url));
+function binaryName() {
+  if (process.platform === "win32") return "magpie-poker.exe";
+  if (process.platform === "darwin" && process.arch === "arm64") return "magpie-poker-darwin-arm64";
+  if (process.platform === "linux" && process.arch === "x64") return "magpie-poker-linux-amd64";
+  return "magpie-poker";
+}
+const bin = join(root, "bin", binaryName());
+const VERSION = "0.2.0";
+const HEALTH_MS = 1500;
+const START_MS = 15000;
 
-function boot(options = {}) {
-  if (!started) {
-    const port = Number(options?.port ?? process.env.MAGPIE_POKER_PORT) || 3481;
-    const tablePort = Number(options?.tablePort ?? process.env.MAGPIE_POKER_TABLE_PORT) || 3482;
-    started = (async () => {
-      // An old plugin host can hold the page port for a few seconds while it
-      // shuts down. Retry like page-chat does instead of failing the host.
-      for (let attempt = 0; attempt < 30; attempt++) {
-        try {
-          const app = await startLocalServer({ port, tablePort });
-          console.log(
-            app.reused
-              ? `[poker] reusing the service already on http://127.0.0.1:${app.port}`
-              : `[poker] ui on http://127.0.0.1:${app.port}`,
-          );
-          return app;
-        } catch (err) {
-          if (err?.code !== "EADDRINUSE") {
-            console.error(`[poker] could not start: ${err?.message || err}`);
-            return null;
-          }
-          if (attempt === 0) console.log(`[poker] port ${port} is still held; retrying`);
-          await new Promise((r) => setTimeout(r, 1000));
-        }
-      }
-      console.error(`[poker] could not start: port ${port} stayed busy`);
-      return null;
-    })();
+let child = null;
+let starting = null;
+let monitor = null;
+let misses = 0;
+
+async function health(port) {
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      signal: AbortSignal.timeout(HEALTH_MS),
+    });
+    if (!res.ok) return null;
+    const j = await res.json();
+    if (j?.name !== "magpie-poker") return null;
+    return j;
+  } catch {
+    return null;
   }
-  return started;
 }
 
-// magpie's Bun host calls every exported function as a plugin entry. Only the
-// server hook is needed: it starts the page service in the host process.
+async function waitFor(port) {
+  const until = Date.now() + START_MS;
+  while (Date.now() < until) {
+    const j = await health(port);
+    if (j) return j;
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return null;
+}
+
+function startMonitor(port, tablePort) {
+  if (monitor) return;
+  monitor = setInterval(async () => {
+    const j = await health(port);
+    if (j && j.version === VERSION) {
+      misses = 0;
+      return;
+    }
+    misses += 1;
+    if (misses < 3) return;
+    misses = 0;
+    console.error(`[poker] service on :${port} stopped; restarting`);
+    if (child && !child.killed) {
+      try { child.kill(); } catch { /* gone */ }
+    }
+    child = null;
+    starting = null;
+    try {
+      await start({ port, tablePort });
+    } catch (err) {
+      console.error(`[poker] restart failed: ${err?.message || err}`);
+    }
+  }, 2000);
+  monitor.unref?.();
+}
+
+async function start(options = {}) {
+  if (starting) return starting;
+  starting = (async () => {
+    const port = Number(options?.port) || 3481;
+    const tablePort = Number(options?.tablePort) || 3482;
+    const j = await health(port);
+    if (j && j.version === VERSION) {
+      console.log(`[poker] reusing Go service on http://127.0.0.1:${port}`);
+      startMonitor(port, tablePort);
+      return;
+    }
+    if (j && j.version !== VERSION) {
+      console.error(`[poker] old service on :${port} (${j.version}); stop it before loading this plugin`);
+    }
+    if (!existsSync(bin)) {
+      throw new Error(`missing Go binary: ${bin} (build it with: go build -o bin/magpie-poker.exe ./cmd/magpie-poker)`);
+    }
+    child = spawn(bin, [
+      "--port", String(port),
+      "--table-port", String(tablePort),
+      "--web-root", root,
+    ], {
+      cwd: root,
+      stdio: ["ignore", "inherit", "inherit"],
+      windowsHide: true,
+    });
+    child.on("exit", (code) => {
+      console.log(`[poker] Go service exited (${code})`);
+      child = null;
+    });
+    child.on("error", (err) => {
+      console.error(`[poker] Go service failed: ${err?.message || err}`);
+      child = null;
+    });
+    const up = await waitFor(port);
+    if (!up) throw new Error(`Go service did not answer on 127.0.0.1:${port}`);
+    console.log(`[poker] Go service ready on http://127.0.0.1:${port}`);
+    startMonitor(port, tablePort);
+  })().finally(() => {
+    starting = null;
+  });
+  return starting;
+}
+
+process.on("exit", () => {
+  if (child && !child.killed) {
+    try { child.kill(); } catch { /* ignore */ }
+  }
+});
+
+// magpie's Bun host calls exported functions as plugin entries.
 export default {
   id: "magpie-poker",
   server: async (_input, options) => {
-    await boot(options);
+    await start(options);
     return {};
   },
 };
